@@ -10,7 +10,9 @@ def authorize(token: str) -> bool:
     - verify therapist session ownership, etc.
     """
     print(f"[AUTH] Verifying token: {token}")
-
+    if token != "ding-dong":
+        print("[AUTH] Unauthorized request.")
+        return False
     # For now, always treat as authorized
     print("[AUTH] Authorized request (stub).")
     return True
