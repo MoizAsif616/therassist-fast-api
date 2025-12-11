@@ -1,0 +1,26 @@
+# --- FastAPI Core ---
+fastapi>=0.115.0                # API framework
+uvicorn[standard]>=0.30.0       # ASGI server for running FastAPI
+
+# --- Environment / Config ---
+python-dotenv>=1.0.1            # Load variables from .env
+
+# --- File Upload Handling ---
+python-multipart>=0.0.9         # Required for UploadFile in FastAPI
+
+# --- Supabase ---
+supabase>=2.5.1                 # Upload audio files to Supabase Storage
+
+# --- Async HTTP Client ---
+httpx>=0.27.0                   # Call external APIs (AssemblyAI, HF, OpenRouter)
+
+# --- Audio Validation Tools ---
+ffmpeg-python>=0.2.0            # Python wrapper for ffmpeg/ffprobe (lightweight)
+
+# --- Logging ---
+loguru>=0.7.2                   # Clean logging for pipeline steps and errors
+
+requests>=2.32.5
+
+huggingface_hub
+numpy
