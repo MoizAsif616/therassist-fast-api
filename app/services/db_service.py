@@ -3,15 +3,75 @@
 from datetime import datetime
 import uuid
 
-from fastapi import HTTPException
 from loguru import logger
 from app.core.supabase_client import db
+
+from fastapi import HTTPException, status
+from supabase import Client
+from postgrest.exceptions import APIError
 
 
 SESSIONS_TABLE = "sessions"
 CLIENTS_TABLE = "clients"
 THERAPISTS_TABLE = "therapists"
 
+def get_therapist_id(user_uuid: str, supabase: Client) -> str:
+    """
+    Retrieves the internal Therapist ID mapping to the authenticated User UUID.
+    
+    Args:
+        user_uuid: The UUID from the JWT token (Supabase Auth).
+        supabase: The initialized Supabase client instance.
+        
+    Returns:
+        str: The internal Therapist UUID (PK).
+    """
+    try:
+        # 1. Query the Therapists table
+        # We select only 'id' to minimize data transfer.
+        # .eq("user_id", user_uuid) assumes your column name is 'user_id' as requested.
+        # .single() ensures we get exactly one row or an error.
+        response = supabase.table("Therapists")\
+            .select("id")\
+            .eq("user_id", user_uuid)\
+            .single()\
+            .execute()
+
+        # 2. Extract the ID
+        # Note: If .single() finds no rows, it typically raises an APIError in modern SDKs
+        therapist_id = response.data.get("id")
+        
+        if not therapist_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User is not registered as a Therapist."
+            )
+            
+        return therapist_id
+
+    except APIError as e:
+        # Handle cases where 0 rows are found (User exists in Auth but not in Therapists table)
+        # Error code 'PGRST116' is standard for "The result contains 0 rows" when using .single()
+        if e.code == "PGRST116":
+             raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: User profile not found in Therapists records."
+            )
+        
+        # Handle other DB errors (connection, permissions)
+        print(f"[DB ERROR] {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database lookup failed."
+        )
+        
+    except Exception as e:
+        # Catch-all for unexpected python errors
+        print(f"[SYSTEM ERROR] {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while retrieving therapist profile."
+        )
 
 def client_exists(client_id: str) -> bool:
     """
@@ -267,3 +327,26 @@ def update_speaker_stats(session_id: str, therapist_time: float, therapist_count
         }).eq("id", session_id).execute()
     except Exception as e:
         logger.error(f"[DB] Failed to update speaker stats: {e}")
+
+def check_session_ownership(session_id: str, client_id: str, therapist_id: str) -> None:
+    """
+    Verifies that a session exists AND is linked to the provided client_id 
+    AND is owned by the authenticated therapist_id.
+    """
+    try:
+        response = db()("sessions")\
+            .select("id")\
+            .eq("id", session_id)\
+            .eq("client_id", client_id)\
+            .eq("therapist_id", therapist_id)\
+            .maybe_single()\
+            .execute()
+        
+        if not response.data:
+             raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Session not found or ownership mismatch. Ensure Client, Therapist, and Session IDs are correct."
+            )
+
+    except APIError:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Session ownership check failed.")

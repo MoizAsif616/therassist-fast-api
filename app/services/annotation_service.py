@@ -29,7 +29,7 @@ async def annotation_service(session_id: str):
     # 1. Validate State
     session = get_session(session_id)
     if session["processing_state"] != "TRANSCRIBED":
-        raise HTTPException(400, f"Invalid state: {session['processing_state']}")
+        raise HTTPException(400, detail = f"Invalid state: {session['processing_state']}")
 
     logger.info(f"[ANNOTATION] Starting annotation for {session_id}")
     # update_processing_state(session_id, "ANNOTATING")
@@ -40,7 +40,7 @@ async def annotation_service(session_id: str):
         utterances = resp.data
     except Exception as e:
         logger.error(f"DB Error: {e}")
-        raise HTTPException(500, "Database fetch failed")
+        raise HTTPException(500, detail="Database fetch failed")
 
     if not utterances:
         # update_processing_state(session_id, "COMPLETED")
@@ -95,4 +95,4 @@ async def annotation_service(session_id: str):
         db()("utterances").upsert(updates_payload).execute()
 
     update_processing_state(session_id, "ANNOTATED")
-    return {"status": "Annotation completed.", "session_id": session_id}
+    return {"detail": "Annotation completed.", "session_id": session_id}

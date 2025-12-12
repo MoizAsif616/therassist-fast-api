@@ -39,7 +39,7 @@ async def _download_from_supabase(storage_path: str, dst_path: str):
         bucket = storage.from_("therapy-sessions")
         data = bucket.download(storage_path)
     except Exception as e:
-        raise HTTPException(500, f"Failed to download audio: {e}")
+        raise HTTPException(500, detail = f"Failed to download audio: {e}")
 
     content = data["content"] if isinstance(data, dict) else data
     with open(dst_path, "wb") as f:
@@ -48,7 +48,7 @@ async def _download_from_supabase(storage_path: str, dst_path: str):
 
 async def _upload_to_assembly(file_path: str) -> str:
     if not ASSEMBLY_KEY:
-        raise HTTPException(500, "ASSEMBLYAI_API_KEY missing")
+        raise HTTPException(500, detail = "ASSEMBLYAI_API_KEY missing")
 
     headers = {"authorization": ASSEMBLY_KEY}
 
@@ -97,7 +97,7 @@ async def _poll_transcription(tid: str) -> dict:
             if j["status"] == "completed":
                 return j
             if j["status"] == "error":
-                raise HTTPException(502, f"AssemblyAI error: {j.get('error')}")
+                raise HTTPException(502, detail = f"AssemblyAI error: {j.get('error')}")
 
             await asyncio.sleep(3)
 
@@ -121,7 +121,7 @@ def clean_transcription_result(raw_json: dict) -> dict:
 
 async def _generate_summary(session_id: str, text: str) -> str:
     if not NOVA_API_KEY:
-        raise HTTPException(500, "NOVA_API_KEY missing")
+        raise HTTPException(500, detail = "NOVA_API_KEY missing")
 
     headers = {
         "Authorization": f"Bearer {NOVA_API_KEY}",
@@ -263,7 +263,7 @@ async def transcribe_session(session_id: str, local_file_path: str | None = None
     session = get_session(session_id)
 
     if session["processing_state"] != "UPLOADED":
-        raise HTTPException(400, f"Transcription allowed only in UPLOADED state, got {session['processing_state']}")
+        raise HTTPException(400, detail = f"Transcription allowed only in UPLOADED state, got {session['processing_state']}")
 
     # Determine file location
     if local_file_path:
@@ -271,7 +271,7 @@ async def transcribe_session(session_id: str, local_file_path: str | None = None
     else:
         audio_url = session["audio_url"]
         if not audio_url:
-            raise HTTPException(400, "No audio_url in session")
+            raise HTTPException(400, detail = "No audio_url in session")
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".audio") as tmp:
             file_path = tmp.name

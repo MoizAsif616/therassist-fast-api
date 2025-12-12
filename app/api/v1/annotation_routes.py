@@ -1,12 +1,15 @@
 # app/api/v1/annotation_routes.py
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, status, Depends
 from pydantic import BaseModel
 from loguru import logger
 
-from app.services.auth_service import authorize
-from app.services.db_service import get_session, client_exists, therapist_exists
+# Import the necessary dependencies and service functions
+from app.services.auth_service import authenticate
+from app.services.db_service import check_session_ownership
+from app.services.user_service import client_exists
 from app.services.annotation_service import annotation_service
+
 
 router = APIRouter()
 
@@ -15,14 +18,14 @@ router = APIRouter()
 
 class AnnotationRequest(BaseModel):
     client_id: str
-    therapist_id: str
+    # Removed redundant therapist_id as it is derived securely from the token
 
 
 # ---------------------- RESPONSE SCHEMA ----------------------
 
 class AnnotationResponse(BaseModel):
     session_id: str
-    message: str
+    detail: str
 
 
 # ---------------------- ROUTE HANDLER -----------------------
@@ -31,43 +34,24 @@ class AnnotationResponse(BaseModel):
 async def run_annotation(
     session_id: str,
     payload: AnnotationRequest,
-    authorization: str = Header(...)
+    # Use the Dependency: This handles JWT validation, therapist existence check,
+    # and returns the therapist_id if successful.
+    therapist_id: str = Depends(authenticate)
 ):
     """
-    Validate → authorization → ownership → call annotation_service
+    Validates ownership of client and session, then initiates annotation.
     """
 
-    # --- Validate Authorization Header ---
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(401, "Invalid authorization header format")
+    client_exists(payload.client_id, therapist_id)
 
-    token = authorization.replace("Bearer ", "").strip()
+    check_session_ownership(session_id, payload.client_id, therapist_id)
 
-    if not authorize(token):
-        raise HTTPException(401, "Unauthorized")
+    logger.info(f"[ANNOTATION] Route triggered annotation for session {session_id} for T:{therapist_id}, C:{payload.client_id}")
 
-    # --- Validate Provided Client & Therapist ---
-    if not client_exists(payload.client_id):
-        raise HTTPException(400, "Client does not exist")
-
-    if not therapist_exists(payload.therapist_id):
-        raise HTTPException(400, "Therapist does not exist")
-
-    # --- Validate Session Ownership ---
-    session = get_session(session_id)
-
-    if session["client_id"] != payload.client_id:
-        raise HTTPException(403, "Session does not belong to this client")
-
-    if session["therapist_id"] != payload.therapist_id:
-        raise HTTPException(403, "Session does not belong to this therapist")
-
-    logger.info(f"[ANNOTATION] Route triggered annotation for session {session_id}")
-
-    # --- Call annotation logic ---
     result = await annotation_service(session_id)
 
+    # 4. Return result
     return AnnotationResponse(
         session_id=session_id,
-        message=result["status"]
+        detail="Annotation completed successfully."
     )

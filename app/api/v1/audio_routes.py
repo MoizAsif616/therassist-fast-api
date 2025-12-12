@@ -2,12 +2,12 @@
 
 from fastapi import (
     APIRouter, UploadFile, File, Form, HTTPException,
-    Header, BackgroundTasks
+    Header, BackgroundTasks, Depends
 )
 from pydantic import BaseModel, ValidationError
 import json
 
-from app.services.auth_service import authorize
+from app.services.auth_service import *
 from app.services.db_service import client_exists, therapist_exists
 from app.services.audio_service import process_audio_and_create_session
 # from app.services.transcription_service import start_transcription
@@ -22,13 +22,13 @@ router = APIRouter()
 
 class AudioUploadRequest(BaseModel):
     client_id: str
-    therapist_id: str
+    # therapist_id: str
 
 
 class AudioUploadResponse(BaseModel):
-    status: str
+    # status: str
     session_id: str
-    message: str
+    detail: str
 
 
 # --------------------------
@@ -40,16 +40,8 @@ async def upload_audio(
     background_tasks: BackgroundTasks,
     audio_file: UploadFile = File(...),
     payload: str = Form(...),
-    authorization: str = Header(...)
+    therapist_id: str = Depends(authenticate)
 ):
-    # ---- Validate Auth Token ----
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid authorization header format")
-
-    token = authorization.replace("Bearer ", "").strip()
-
-    if not authorize(token):
-        raise HTTPException(status_code=401, detail="Unauthorized")
 
     # ---- Parse JSON Payload ----
     try:
@@ -61,19 +53,15 @@ async def upload_audio(
     if not client_exists(metadata.client_id):
         raise HTTPException(status_code=400, detail="Client does not exist")
 
-    if not therapist_exists(metadata.therapist_id):
-        raise HTTPException(status_code=400, detail="Therapist does not exist")
-
     # ---- Process Audio & Create Session ----
     session_id = process_audio_and_create_session(
         file=audio_file,
         client_id=metadata.client_id,
-        therapist_id=metadata.therapist_id,
+        therapist_id=therapist_id,    
     )
 
     # ---- Success Response ----
     return AudioUploadResponse(
-        status="uploaded",
         session_id=session_id,
-        message="Audio processed and pipeline started."
+        detail="Audio processed and pipeline started."
     )
