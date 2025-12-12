@@ -2,10 +2,30 @@ from fastapi import FastAPI
 from app.api.v1.audio_routes import router as audio_router
 from app.api.v1.transcription_routes import router as transcription_router
 from app.api.v1.annotation_routes import router as annotation_router
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
     title="Therassist API",
     version="1.0.0"
+)
+origins = [
+    # Allow local development for Next.js (often on port 3000)
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    # If you deploy a staging or production frontend, add its URL here later
+    # "https://your-production-frontend.com", 
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    # The list of origins that should be permitted to make cross-origin requests.
+    allow_origins=origins,
+    # Allows cookies (usually not needed with JWT, but good practice if using cookies)
+    allow_credentials=True,
+    # Allows all standard methods (GET, POST, PUT, DELETE)
+    allow_methods=["*"], 
+    # Allows all headers, including 'Authorization' (CRITICAL for your JWT) and 'Content-Type'.
+    allow_headers=["*"],
 )
 
 # Register routes
