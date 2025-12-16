@@ -33,6 +33,11 @@ app.include_router(audio_router, prefix="/api/v1/audio", tags=["Audio"])
 app.include_router(transcription_router, prefix="/api/v1/transcription")
 app.include_router(annotation_router, prefix="/api/v1/annotation")
 
+# Health Check / Root Endpoint
+@app.get("/", include_in_schema=False)
+async def root():
+    return {"message": "Therassist API is running! Access routes via /api/v1/..."}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
