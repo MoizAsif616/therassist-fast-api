@@ -10,8 +10,9 @@ app = FastAPI(
 )
 origins = [
     # Allow local development for Next.js (often on port 3000)
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
+    # "http://localhost:3000",
+    # "http://127.0.0.1:3000",
+    "*",
     # If you deploy a staging or production frontend, add its URL here later
     # "https://your-production-frontend.com", 
 ]
