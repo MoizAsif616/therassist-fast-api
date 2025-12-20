@@ -3,6 +3,13 @@ from app.api.v1.audio_routes import router as audio_router
 from app.api.v1.transcription_routes import router as transcription_router
 from app.api.v1.annotation_routes import router as annotation_router
 from fastapi.middleware.cors import CORSMiddleware
+import os
+
+os.environ.pop("HTTP_PROXY", None)
+os.environ.pop("HTTPS_PROXY", None)
+os.environ.pop("http_proxy", None)
+os.environ.pop("https_proxy", None)
+
 
 app = FastAPI(
     title="Therassist API",
@@ -31,8 +38,8 @@ app.add_middleware(
 
 # Register routes
 app.include_router(audio_router, prefix="/api/v1/audio", tags=["Audio"])
-app.include_router(transcription_router, prefix="/api/v1/transcription")
-app.include_router(annotation_router, prefix="/api/v1/annotation")
+app.include_router(transcription_router, prefix="/api/v1")
+app.include_router(annotation_router, prefix="/api/v1")
 
 # Health Check / Root Endpoint
 @app.get("/", include_in_schema=False)

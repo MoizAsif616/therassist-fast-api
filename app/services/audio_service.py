@@ -13,7 +13,7 @@ from app.services.transcription_service import transcribe_session
 
 # Import New Utilities
 from app.utils.audio_utils import upload_file_to_r2, delete_file_from_r2
-from app.utils.db_utils import create_session_transaction
+from app.utils.transaction_utils import create_session_transaction
 
 ALLOWED_EXTS = {"wav", "mp3", "mp4", "m4a", "aac", "flac", "ogg", "webm"}
 
