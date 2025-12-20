@@ -1,166 +1,108 @@
-# app/services/audio_service.py
-
 import asyncio
 import os
 import tempfile
+import time
 import subprocess
+import hashlib
 from datetime import timedelta
-
 from fastapi import UploadFile, HTTPException
 
-from app.services.db_service import *
-from app.core.supabase_client import storage
+# Import Business Logic
+from app.services.db_service import session_with_same_audio_exists
 from app.services.transcription_service import transcribe_session
 
+# Import New Utilities
+from app.utils.audio_utils import upload_file_to_r2, delete_file_from_r2
+from app.utils.db_utils import create_session_transaction
 
 ALLOWED_EXTS = {"wav", "mp3", "mp4", "m4a", "aac", "flac", "ogg", "webm"}
 
-
-# --------------------------
-# FFmpeg Helpers
-# --------------------------
-
-def _run(cmd: list[str]):
-    proc = subprocess.run(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-    )
-    if proc.returncode != 0:
-        raise HTTPException(status_code=400, detail=proc.stderr.strip())
+# --- HELPERS ---
+def _run(cmd):
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if proc.returncode != 0: raise HTTPException(400, proc.stderr.strip())
     return proc.stdout
 
-
-def _validate_ext(filename: str) -> str:
-    ext = filename.split(".")[-1].lower()
-    if ext not in ALLOWED_EXTS:
-        raise HTTPException(status_code=400, detail=f"Unsupported audio format: {ext}")
+def _validate_ext(fn):
+    ext = fn.split(".")[-1].lower()
+    if ext not in ALLOWED_EXTS: raise HTTPException(400, f"Unsupported: {ext}")
     return ext
 
+def _has_audio(path): 
+    return "audio" in _run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", path]).lower()
 
-def _has_audio_stream(path: str) -> bool:
-    out = _run([
-        "ffprobe", "-v", "error",
-        "-show_entries", "stream=codec_type",
-        "-of", "csv=p=0",
-        path
-    ])
-    return "audio" in out.lower()
+def _duration(path): 
+    return float(_run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path]).strip())
 
+def _resample(src, dst): 
+    _run(["ffmpeg", "-i", src, "-ar", "16000", "-y", dst])
 
-def _duration_seconds(path: str) -> float:
-    out = _run([
-        "ffprobe", "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        path
-    ])
-    return float(out.strip())
-
-
-def _hms(sec: float) -> str:
-    return str(timedelta(seconds=int(sec)))
-
-
-def _resample_to_16k(src: str, dst: str):
-    _run([
-        "ffmpeg", "-i", src,
-        "-ar", "16000",       # enforce 16 kHz sample rate
-        "-y", dst
-    ])
-
-import hashlib
-
-def _compute_md5(path: str) -> str:
-    hash_md5 = hashlib.md5()
+def _md5(path):
+    h = hashlib.md5()
     with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
-            hash_md5.update(chunk)
-    return hash_md5.hexdigest()
+        for c in iter(lambda: f.read(8192), b""): h.update(c)
+    return h.hexdigest()
 
 
-# --------------------------
-# Main Service Function
-# --------------------------
-
-def process_audio_and_create_session(
-    file: UploadFile,
-    client_id: str,
-    therapist_id: str
-) -> str:
-    """
-    Validates audio, converts to 16 kHz, stores metadata,
-    uploads file, and creates a session.
-    """
-
+## MAIN SERVICE FUNCTION
+def audio_service(file: UploadFile, client_id: str, therapist_id: str) -> str:
     ext = _validate_ext(file.filename)
 
-    # Save uploaded audio temporarily
+    # 1. Save Temp File locally
     with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
         tmp_path = tmp.name
         tmp.write(file.file.read())
 
-    audio_hash = _compute_md5(tmp_path)
-
-    if session_with_same_audio_exists(client_id, therapist_id, audio_hash):
-        raise HTTPException(
-            status_code=400,
-            detail="Duplicate audio detected. This session has already been uploaded."
-        )
-
-    # Ensure the file contains audio
-    if not _has_audio_stream(tmp_path):
-        raise HTTPException(status_code=400, detail="File does not contain a valid audio stream.")
-
-    # Validate duration (5–90 minutes)
-    duration_sec = _duration_seconds(tmp_path)
-    if duration_sec < 300 or duration_sec > 5400:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Audio duration must be between 5 and 90 minutes. Got {duration_sec:.1f}s."
-        )
-
-    duration_hms = _hms(duration_sec)
-
-    # Resample audio to 16 kHz (no trimming)
-    final_path = tmp_path.replace(f".{ext}", f"_processed.{ext}")
-    _resample_to_16k(tmp_path, final_path)
-
-    # Create DB session
-    session_id = create_session(
-        client_id=client_id,
-        therapist_id=therapist_id,
-        duration_hms=duration_hms,
-        audio_hash=audio_hash
-    )
-
-    # Upload processed file to Supabase
-    final_name = f"{session_id}.{ext}"
-    storage_path = f"{final_name}"
-    logger.info(f"[AUDIO UPLOAD] Uploading session {session_id} audio to storage at {storage_path}")
-    bucket = storage.from_("therapy-sessions")
-
     try:
-        with open(final_path, "rb") as f:
-            resp = bucket.upload(storage_path, f)
-        logger.info(f"[AUDIO UPLOAD] Uploaded audio for session {session_id} to storage.")
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to upload audio to storage: {e}"
-        )
+        # 2. Validation
+        audio_hash = _md5(tmp_path)
+        if session_with_same_audio_exists(client_id, therapist_id, audio_hash):
+            raise HTTPException(400, "Duplicate audio detected.")
 
-    # Update DB
-    update_session_audio_path(session_id, storage_path)
-    update_processing_state(session_id, "UPLOADED")
-
-    asyncio.create_task(
-      transcribe_session(
-          session_id=session_id,
-          local_file_path=final_path,   # your processed file
+        if not _has_audio(tmp_path): 
+            raise HTTPException(400, "No audio stream found.")
         
-      )
-    )   
-   
-    # Cleanup
-    os.remove(tmp_path)
+        dur = _duration(tmp_path)
+        if not (300 <= dur <= 5400): 
+            raise HTTPException(400, f"Duration {dur:.1f}s out of range (5-90m).")
+        
+        # 3. Processing (Resample)
+        final_path = tmp_path.replace(f".{ext}", f"_processed.{ext}")
+        _resample(tmp_path, final_path)
 
-    return session_id
+        # 4. Generate Filename & UPLOAD (Step 1 of Distributed Transaction)
+        timestamp = int(time.time())
+        # Format: {therapist_id}-{timestamp}.{ext}
+        r2_object_name = f"{therapist_id}-{timestamp}.{ext}"
+
+        # Upload to R2 via Minio
+        try:
+            uploaded_url = upload_file_to_r2(final_path, r2_object_name)
+        except Exception as e:
+            # Explicitly handle R2/Minio failure
+            raise HTTPException(status_code=502, detail=f"Storage Upload Failed: {str(e)}")
+
+        # 5. DB INSERT (Step 2 of Distributed Transaction)
+        try:
+            session_id = create_session_transaction(
+                client_id=client_id,
+                therapist_id=therapist_id,
+                duration_hms=str(timedelta(seconds=int(dur))),
+                audio_hash=audio_hash,
+                audio_url=uploaded_url
+            )
+        except Exception as db_error:
+            # --- ROLLBACK ---
+            # DB failed, so we MUST undo the upload
+            delete_file_from_r2(r2_object_name)
+            raise db_error
+
+        # 6. Start Async Transcription (Only runs if both steps above succeeded)
+        asyncio.create_task(transcribe_session(session_id, final_path))
+
+        return session_id
+
+    finally:
+        # Cleanup local temp files
+        if os.path.exists(tmp_path): os.remove(tmp_path)
+        # Note: We keep 'final_path' briefly if needed for async task or let OS clean /tmp

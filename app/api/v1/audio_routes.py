@@ -8,17 +8,11 @@ from pydantic import BaseModel, ValidationError
 import json
 
 from app.services.auth_service import *
-from app.services.db_service import client_exists, therapist_exists
-from app.services.audio_service import process_audio_and_create_session
-# from app.services.transcription_service import start_transcription
+from app.services.db_service import client_exists
+from app.services.audio_service import audio_service
 
 
 router = APIRouter()
-
-
-# --------------------------
-# Request & Response Schemas
-# --------------------------
 
 class AudioUploadRequest(BaseModel):
     client_id: str
@@ -30,11 +24,7 @@ class AudioUploadResponse(BaseModel):
     session_id: str
     detail: str
 
-
-# --------------------------
-# Upload Route
-# --------------------------
-
+## MAIN ROUTE
 @router.post("/upload", status_code=201, response_model=AudioUploadResponse)
 async def upload_audio(
     background_tasks: BackgroundTasks,
@@ -42,26 +32,23 @@ async def upload_audio(
     payload: str = Form(...),
     therapist_id: str = Depends(authenticate)
 ):
-
-    # ---- Parse JSON Payload ----
     try:
         metadata = AudioUploadRequest(**json.loads(payload))
     except (json.JSONDecodeError, ValidationError):
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
-    # ---- Validate Client & Therapist ----
+    ## CHECKING IF CLIENT EXISTS
     if not client_exists(metadata.client_id):
         raise HTTPException(status_code=400, detail="Client does not exist")
 
-    # ---- Process Audio & Create Session ----
-    session_id = process_audio_and_create_session(
+    ## CALL AUSIO SERVICE
+    session_id = audio_service(
         file=audio_file,
         client_id=metadata.client_id,
         therapist_id=therapist_id,    
     )
 
-    # ---- Success Response ----
     return AudioUploadResponse(
         session_id=session_id,
-        detail="Audio processed and pipeline started."
+        detail="Audio uploaded successfully. Processing will start shortly"
     )
