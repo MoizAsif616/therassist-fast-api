@@ -36,11 +36,11 @@ async def upload_audio(
     try:
         metadata = AudioUploadRequest(**json.loads(payload))
     except (json.JSONDecodeError, ValidationError):
-        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+        raise HTTPException(status_code=400, detail="Invalid JSON payload.")
 
     ## CHECKING IF CLIENT EXISTS
     if not client_exists(metadata.client_id):
-        raise HTTPException(status_code=400, detail="Client does not exist")
+        raise HTTPException(status_code=400, detail="Client does not exist.")
 
     ## CALL AUDIO SERVICE
     logger.info(f"[AUDIO UPLOAD] Starting audio service.")
@@ -52,5 +52,5 @@ async def upload_audio(
 
     return AudioUploadResponse(
         session_id=session_id,
-        detail="Audio uploaded successfully. Processing will start shortly"
+        detail="Audio uploaded and further processing started."
     )

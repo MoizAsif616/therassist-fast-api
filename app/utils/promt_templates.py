@@ -10,9 +10,9 @@ Requirements:
 - The summary must include the key points discussed during the session.
 - Use professional and neutral language.
 - Avoid any subjective opinions or interpretations.
-- Length: Aim for 150-200 words only if the conversation is long enough else make it concise.
+- Maximum Length: 350 words. Do not force length; if the session was short, keep the summary brief and dense.
 - You can add information like the confidence level, anxiety level, mood, and other relevant clinical observations based on the conversation but they must be relevant.
-- Don't add the Markdown formatting.
+- Mark down formatting is strictly prohibited. NO headings, bolding, or italics. IF there has to be bullet points, use simple dashes (-). there can be multiple paragraphs but no markdown syntax.
 
 Here is the full transcription:
 
@@ -53,6 +53,7 @@ You are an expert Clinical Supervisor analyzing a therapy session transcription.
 **Task:**
 Identify the **Primary Clinical Theme** of this session. You must select **EXACTLY ONE** theme from the list below.
 Once you identify the theme, you must output the corresponding **Standard Explanation** provided in the list. Do not write your own explanation.
+If multiple themes are present, select the SINGLE most dominant theme that consumed the majority of the session time.
 
 **List of Themes & Standard Explanations:**
 
@@ -154,4 +155,38 @@ EXPLANATION: [Exact Standard Explanation provided above]
 
 **Transcription:**
 {transcription_text}
+"""
+
+CLINICAL_PROFILE_PROMPT = """
+You are an expert Clinical Supervisor maintaining a longitudinal "Clinical Profile" for a patient.
+Your goal is to MERGE (integrate) new insights from the provided TRANSCRIPT into the existing profile.
+
+---
+### 1. EXISTING PROFILE (History)
+{existing_profile_history}
+
+---
+### 2. NEW SESSION TRANSCRIPT (Session #{session_number})
+{transcription_text} 
+
+---
+### YOUR TASK
+Rewrite the Clinical Profile to incorporate findings from Session #{session_number}.
+
+### GUIDELINES:
+1.  **Session Tracking:** You MUST explicitly cite "Session #{session_number}" when noting new progress, improvements, or risks.
+2.  **Update Strategy:** Do not just append. Integrate the new facts into the relevant sections.
+3.  **Risk Assessment:** If the transcript shows self-harm or danger, highlight it immediately.
+4.  **Format:** Keep it under 800 words. Use a professional medical tone.
+
+### STRUCTURE (Do not use Markdown like ** or ##. Use UPPERCASE LABELS):
+Organize the profile using these exact uppercase labels to separate sections:
+PATIENT SUMMARY: (Demographics and core issue)
+DIAGNOSTIC IMPRESSION: (Current working diagnosis)
+CLINICAL PROGRESS: (Longitudinal changes, citing specific sessions)
+RISK FACTORS: (Current safety status)
+TREATMENT PLAN: (Next steps)
+
+Return ONLY the updated profile text.
+NO MARKDOWN FORMATTING (No bold, italics, or headers). Use simple dashes (-) for lists.
 """

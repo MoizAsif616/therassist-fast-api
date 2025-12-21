@@ -18,12 +18,14 @@ from app.utils.audio_utils import (
 from app.utils.transcription_utils import (
     generate_summary,
     generate_theme,
-    generate_sentiment
+    generate_sentiment,
+    generate_clinical_profile
 )
 from app.utils.transaction_utils import commit_transcription_transaction
 
 
 async def transcribe_session(session_id: str, local_file_path: str | None = None):
+    
     session = get_session(session_id)
     if session["processing_state"] != "UPLOADED":
         raise HTTPException(400, detail=f"Invalid state: {session['processing_state']}")
@@ -68,15 +70,22 @@ async def transcribe_session(session_id: str, local_file_path: str | None = None
             "client_time": round(c_time / 1000.0, 2),
             "client_count": c_count
         }
+        try:
+            client_id = session["client_id"]
+            session_number = session["session_number"]
+        except Exception:
+            logger.error(f"[TRANSCRIPTION] Could not fetch session metadata.")
+            raise HTTPException(500, detail="Session metadata fetch failed.")
 
         # 4. Generate AI Insights (Parallel)
         logger.info(f"[TRANSCRIPTION] Exracting insights.")
         full_text = cleaned_data["text"]
         
-        summary, sentiment, theme_data = await asyncio.gather(
+        summary, sentiment, theme_data, client_profile_text = await asyncio.gather(
             generate_summary(session_id, full_text),
             generate_sentiment(session_id, full_text),
-            generate_theme(session_id, full_text)
+            generate_theme(session_id, full_text),
+            generate_clinical_profile(client_id, session_number, full_text)
         )
 
         # 5. Atomic DB Commit
@@ -88,7 +97,9 @@ async def transcribe_session(session_id: str, local_file_path: str | None = None
             theme=theme_data["theme"],
             explanation=theme_data["explanation"],
             utterances=cleaned_data["utterances"],
-            stats=stats
+            stats=stats,
+            client_id=client_id,
+            client_profile=client_profile_text
         )
 
         # 6. Trigger Annotation
