@@ -54,5 +54,5 @@ async def run_transcription(
 
     # 4. Return result
     return TranscriptionResponse(
-        detail="Transcription completed successfully."
+        detail="Transcription completed and further processing started."
     )

@@ -53,5 +53,5 @@ async def run_annotation(
     # 4. Return result
     return AnnotationResponse(
         session_id=session_id,
-        detail="Annotation completed successfully."
+        detail="Annotation completed and further processing started."
     )

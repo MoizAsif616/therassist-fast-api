@@ -4,6 +4,7 @@ from fastapi import (
     APIRouter, UploadFile, File, Form, HTTPException,
     Header, BackgroundTasks, Depends
 )
+from loguru import logger
 from pydantic import BaseModel, ValidationError
 import json
 
@@ -41,7 +42,8 @@ async def upload_audio(
     if not client_exists(metadata.client_id):
         raise HTTPException(status_code=400, detail="Client does not exist")
 
-    ## CALL AUSIO SERVICE
+    ## CALL AUDIO SERVICE
+    logger.info(f"[AUDIO UPLOAD] Starting audio service.")
     session_id = audio_service(
         file=audio_file,
         client_id=metadata.client_id,

@@ -83,3 +83,28 @@ def commit_transcription_transaction(
         logger.error(f"[TRANSCRIPTION TRANSACTION] RPC Failed: {e}")
         # Supabase returns specific error messages that are helpful for debugging
         raise HTTPException(500, detail=f"Database Transaction Failed: {e}")
+    
+
+def commit_annotation_transaction(
+    session_id: str,
+    client_id: str,
+    utterances: list[dict],
+    session_emotions: dict,
+    client_emotions: dict
+):
+    logger.info(f"[ANNOTATION TRANSACTION] RPC Commit for {session_id}")
+    
+    try:
+        get_supabase_client().rpc("commit_annotation", {
+            "p_session_id": session_id,
+            "p_client_id": client_id,
+            "p_utterances": utterances,
+            "p_session_emotions": session_emotions,
+            "p_client_emotions": client_emotions
+        }).execute()
+        
+        logger.info(f"[ANNOTATION TRANSACTION] Success for {session_id}")
+
+    except Exception as e:
+        logger.error(f"[ANNOTATION TRANSACTION] RPC Failed: {e}")
+        raise HTTPException(500, detail=f"Annotation Database Transaction Failed: {e}")

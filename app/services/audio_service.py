@@ -6,6 +6,7 @@ import subprocess
 import hashlib
 from datetime import timedelta
 from fastapi import UploadFile, HTTPException
+from loguru import logger
 
 # Import Business Logic
 from app.services.db_service import session_with_same_audio_exists
@@ -54,6 +55,7 @@ def audio_service(file: UploadFile, client_id: str, therapist_id: str) -> str:
         tmp.write(file.file.read())
 
     try:
+        logger.info(f"[AUDIO SERVICE] Audio preprocessing started for T:{therapist_id}, C:{client_id}")
         # 2. Validation
         audio_hash = _md5(tmp_path)
         if session_with_same_audio_exists(client_id, therapist_id, audio_hash):
@@ -80,6 +82,7 @@ def audio_service(file: UploadFile, client_id: str, therapist_id: str) -> str:
             uploaded_url = upload_file_to_r2(final_path, r2_object_name)
         except Exception as e:
             # Explicitly handle R2/Minio failure
+            logger.error(f"[AUDIO SERVICE] R2 Upload Failed: {e}")
             raise HTTPException(status_code=502, detail=f"Storage Upload Failed: {str(e)}")
 
         # 5. DB INSERT (Step 2 of Distributed Transaction)
@@ -101,6 +104,9 @@ def audio_service(file: UploadFile, client_id: str, therapist_id: str) -> str:
         asyncio.create_task(transcribe_session(session_id, final_path))
 
         return session_id
+    except Exception as e:
+        logger.error(f"[AUDIO SERVICE] Failed: {e}")
+        raise HTTPException(500, detail="Audio processing failed.")
 
     finally:
         # Cleanup local temp files

@@ -39,13 +39,21 @@ async def transcribe_session(session_id: str, local_file_path: str | None = None
 
     try:
         # 2. Transcribe (AssemblyAI)
-        logger.info(f"[TRANSCRIPTION] Uploading to AssemblyAI...")
-        upload_url = await upload_audio_to_assembly(file_path)
+        try:
+          logger.info(f"[TRANSCRIPTION] Uploading to AssemblyAI.")
+          upload_url = await upload_audio_to_assembly(file_path)
+        except Exception as e:
+          logger.error(f"[TRANSCRIPTION] Upload failed: {e}")
+          raise HTTPException(500, detail="Audio upload failed.")
         
-        logger.info(f"[TRANSCRIPTION] Processing job...")
-        tid = await create_transcription_job(upload_url)
-        raw_data = await poll_transcription_result(tid)
-        cleaned_data = clean_transcription_data(raw_data)
+        try:
+          logger.info(f"[TRANSCRIPTION] Waiting for transcription.")
+          tid = await create_transcription_job(upload_url)
+          raw_data = await poll_transcription_result(tid)
+          cleaned_data = clean_transcription_data(raw_data)
+        except Exception as e:
+          logger.error(f"[TRANSCRIPTION] Transcription failed: {e}")
+          raise HTTPException(500, detail="Transcription failed.")
         
         # 3. Calculate Speaker Stats
         t_time, t_count, c_time, c_count = 0, 0, 0, 0
@@ -62,7 +70,7 @@ async def transcribe_session(session_id: str, local_file_path: str | None = None
         }
 
         # 4. Generate AI Insights (Parallel)
-        logger.info(f"[TRANSCRIPTION] Generating AI Insights...")
+        logger.info(f"[TRANSCRIPTION] Exracting insights.")
         full_text = cleaned_data["text"]
         
         summary, sentiment, theme_data = await asyncio.gather(
@@ -72,7 +80,7 @@ async def transcribe_session(session_id: str, local_file_path: str | None = None
         )
 
         # 5. Atomic DB Commit
-        logger.info(f"[TRANSCRIPTION] Committing Transaction...")
+        logger.info(f"[TRANSCRIPTION] Committing transaction.")
         commit_transcription_transaction(
             session_id=session_id,
             summary=summary,
