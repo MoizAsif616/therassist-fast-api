@@ -18,20 +18,22 @@ MODEL2_KEY = os.getenv("MODEL2_API_KEY")
 MODEL3_NAME = os.getenv("MODEL3_NAME")
 MODEL3_KEY = os.getenv("MODEL3_API_KEY")
 
+MAX_RETRIES = int(os.getenv("MAX_RETRIES", 1))
+
 # --------------------------------------------------------------
 # 1. SUMMARY GENERATION
 # --------------------------------------------------------------
 async def generate_summary(session_id: str, text: str) -> str:
-    if not MODEL1_KEY:
+    if not MODEL2_KEY:
         raise HTTPException(500, detail="Server misconfiguration: MODEL1_API_KEY missing.")
 
     headers = {
-        "Authorization": f"Bearer {MODEL1_KEY}",
+        "Authorization": f"Bearer {MODEL2_KEY}",
         "Content-Type": "application/json",
         "HTTP-Referer": "http://localhost",
     }
     payload = {
-        "model": MODEL1_NAME,
+        "model": MODEL2_NAME,
         "messages": [
             {"role": "system", "content": "You summarize therapy sessions professionally."},
             {"role": "user", "content": SESSION_SUMMARY_PROMPT.format(transcription_text=text)},
@@ -42,7 +44,7 @@ async def generate_summary(session_id: str, text: str) -> str:
         logger.info(f"[TRANSCRIPTION UTILS] [SUMMARY] Generating summary for Session {session_id}...")
         
         # --- ADDED RETRY LOOP (3 Attempts) ---
-        max_retries = 3
+        max_retries = MAX_RETRIES
         for attempt in range(1, max_retries + 1):
             try:
                 async with httpx.AsyncClient(trust_env=False) as client:
@@ -88,12 +90,12 @@ async def generate_summary(session_id: str, text: str) -> str:
 # 2. THEME EXTRACTION
 # --------------------------------------------------------------
 async def generate_theme(session_id: str, text: str) -> dict:
-    if not MODEL1_KEY:
-        raise HTTPException(500, detail="MODEL1_API_KEY missing.")
+    if not MODEL3_KEY:
+        raise HTTPException(500, detail="MODEL3_API_KEY missing.")
 
-    headers = {"Authorization": f"Bearer {MODEL1_KEY}", "Content-Type": "application/json", "HTTP-Referer": "http://localhost"}
+    headers = {"Authorization": f"Bearer {MODEL3_KEY}", "Content-Type": "application/json", "HTTP-Referer": "http://localhost"}
     payload = {
-        "model": MODEL1_NAME,
+        "model": MODEL3_NAME,
         "messages": [
             {"role": "system", "content": "You are a clinical classification assistant."},
             {"role": "user", "content": THEME_EXTRACTION_PROMPT.format(transcription_text=text)},
@@ -105,7 +107,7 @@ async def generate_theme(session_id: str, text: str) -> dict:
         logger.info(f"[TRANSCRIPTION UTILS] [SESSION THEME] Extracting theme for Session {session_id}...")
         
         # --- ADDED RETRY LOOP (3 Attempts) ---
-        max_retries = 3
+        max_retries = MAX_RETRIES
         for attempt in range(1, max_retries + 1):
             try:
                 async with httpx.AsyncClient(trust_env=False) as client:
@@ -256,7 +258,7 @@ async def generate_clinical_profile(client_id: str, session_number: int, transcr
     }
 
     # --- 4. Call LLM (With 2 Retries) ---
-    max_retries = 5
+    max_retries = MAX_RETRIES
     for attempt in range(1, max_retries + 1):
         try:
             logger.info(f"[TRANSCRIPTION UTILS] [PROFILE] Generating Profile (Attempt {attempt}/{max_retries})...")
@@ -334,8 +336,7 @@ async def identify_speaker_roles(utterances: list) -> dict:
         "temperature": 0.1 
     }
 
-    # 3. Retry Logic (Max 3 Attempts)
-    max_retries = 3
+    max_retries = MAX_RETRIES
     for attempt in range(1, max_retries + 1):
         try:
             logger.info(f"[TRANSCRIPTION UTILS] [ROLE_ID] Identifying speakers (Attempt {attempt}/{max_retries})...")

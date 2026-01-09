@@ -61,5 +61,5 @@ def compute_emotion_maps(utterances: list[dict], existing_client_map: dict) -> t
     client_counter.update(session_counter)
     
     client_map = dict(client_counter)
-
+    logger.success(f"[ANNOTATION UTILS] Computed emotion maps.")
     return session_map, client_map
