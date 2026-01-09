@@ -19,7 +19,10 @@ from app.utils.transcription_utils import (
     generate_summary,
     generate_theme,
     generate_sentiment,
-    generate_clinical_profile
+    generate_clinical_profile,
+    identify_speaker_roles,
+    impute_speaker_labels
+
 )
 from app.utils.transaction_utils import commit_transcription_transaction
 
@@ -53,9 +56,15 @@ async def transcribe_session(session_id: str, local_file_path: str | None = None
           tid = await create_transcription_job(upload_url)
           raw_data = await poll_transcription_result(tid)
           cleaned_data = clean_transcription_data(raw_data)
+          print(cleaned_data["text"][:200])
+          print(cleaned_data["utterances"][:2])
+          role_map = await identify_speaker_roles(cleaned_data["utterances"])
+          cleaned_data = await impute_speaker_labels(cleaned_data, role_map)
         except Exception as e:
           logger.error(f"[TRANSCRIPTION] Transcription failed: {e}")
           raise HTTPException(500, detail="Transcription failed.")
+        
+        logger.info(f"[TRANSCRIPTION] Speaker roles identified: {role_map}")
         
         # 3. Calculate Speaker Stats
         t_time, t_count, c_time, c_count = 0, 0, 0, 0

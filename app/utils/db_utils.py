@@ -1,4 +1,5 @@
 
+from http.client import HTTPException
 from loguru import logger
 from app.core.supabase_client import db
 
@@ -22,5 +23,5 @@ def _get_next_session_number(client_id: str, therapist_id: str) -> int:
         return 1
     except Exception as e:
         logger.error(f"[DB UTILS:AUDIO UPLOAD] Failed to get session number: {e}")
-        return 1
+        raise HTTPException(500, detail="Failed to get next session number.")
 

@@ -190,3 +190,29 @@ TREATMENT PLAN: (Next steps)
 Return ONLY the updated profile text.
 NO MARKDOWN FORMATTING (No bold, italics, or headers). Use simple dashes (-) for lists.
 """
+
+
+SPEAKER_IDENTIFICATION_PROMPT = """
+You are an expert system analyzing a transcript of a clinical therapy session.
+
+Your task is to identify the roles of the two speakers based on their dialogue patterns.
+- **The Therapist**: Typically asks probing questions, validates feelings, sets the agenda, manages the session flow, or offers clinical interpretations.
+- **The Client**: Typically reports symptoms, answers questions, discusses personal history, or expresses emotions.
+
+Below is a sample of the conversation:
+---------------------
+{transcript_sample}
+---------------------
+
+Based on the text above, map the generic speaker labels (e.g., "Speaker A", "Speaker B") to their correct roles.
+
+**Output Format:**
+You must return a valid JSON object with exactly two keys: "Therapist" and "Client".
+Do not include markdown formatting (like ```json), explanations, or extra text.
+
+Example Output:
+{{
+  "Therapist": "Speaker A",
+  "Client": "Speaker B"
+}}
+"""
