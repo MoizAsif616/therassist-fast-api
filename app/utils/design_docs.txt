@@ -1,0 +1,125 @@
+Router Output Schema (LLM to Backend)
+=====================================
+
+{
+  "is_relevant": true,
+  "direct_response": null,
+  "rag_strategy": {
+    "intent": "retrieval",
+    "execution_mode": "hybrid_search",
+    "response_format": "audio_ref",
+    "relational_logic": "next_utterance",
+    "data_level": "utterance"
+  },
+  "scope": {
+    "mode": "specific_sessions",
+    "target_session_numbers": [4],
+    "temporal_window": null
+  },
+  "filters": {
+    "search_target_speaker": "Therapist",
+    "return_source_speaker": "Client",
+    "clinical_themes": [],
+    "keywords": ["sleep schedule"]
+  }
+}
+
+Flag Reference Definitions
+==========================
+
+Top Level Flags
+---------------
+is_relevant: true | false
+
+If false, the Backend ignores all other fields and returns direct_response to the user.
+If true, the Backend proceeds to execute the RAG logic.
+
+direct_response: string | null
+Used only when is_relevant: false.
+
+Example: "I am designed to assist with clinical analysis. Please ask a question related to the therapy sessions."
+
+A. rag_strategy.intent (What is the goal?)
+------------------------------------------
+
+retrieval: Find specific information or moments.
+comparison: Compare two data points (requires 2 distinct searches/filters).
+summarization: Compress large amounts of text into a summary.
+aggregation: Count occurrences (e.g., "How many times...").
+
+B. rag_strategy.execution_mode (How do we search?)
+--------------------------------------------------
+
+hybrid_search: (Default) Vector Similarity + Keyword Filter (Qdrant).
+full_fetch_as_is: (No Vectors) SQL SELECT * from DB for the whole session.
+keyword_only: (No Vectors) SQL LIKE or Full-Text Search (Exact matches).
+count_only: (No Text) SQL SELECT COUNT(*) (Fast stats).
+
+C. rag_strategy.data_level (What table do we look at?)
+------------------------------------------------------
+
+utterance: Search individual dialogue lines (Granular).
+session_summary: Search only high-level session summaries (Broad).
+session_metadata: Search only dates, durations, or tags (Administrative).
+
+D. rag_strategy.response_format (What does the Frontend need?)
+--------------------------------------------------------------
+
+text: Standard string response.
+audio_ref: Returns text + Audio URL + Start/End Timestamps (for Player).
+list: Returns a structured array (e.g., list of medications).
+number: Returns a raw integer (e.g., "14 times").
+
+E. rag_strategy.relational_logic (Do we hop to another row?)
+------------------------------------------------------------
+
+direct_match: (Default) Return the exact chunk found by search.
+next_utterance: Find Match X -> Return Sequence_ID(X) + 1 (Reaction).
+previous_utterance: Find Match X -> Return Sequence_ID(X) - 1 (Context).
+
+F. scope.mode (Which sessions?)
+-------------------------------
+
+all_sessions: Search across every session for this client.
+latest_session: Find MAX(session_number) and restrict search to it.
+specific_sessions: Restrict search to target_session_numbers (e.g., [1, 5]).
+range: Restrict search to sessions between X and Y.
+last_n_sessions: Sort descending and take top N sessions.
+
+G. filters (Constraints)
+------------------------
+
+search_target_speaker: Who to search in vectors? (Client or Therapist).
+return_source_speaker: Who to return to user? (Client or Therapist).
+clinical_themes: Filter by AI-detected concepts (e.g., "Trauma").
+keywords: Filter by exact text tokens (e.g., "Xanax").
+
+
+3. Backend Response Schema (Backend to Frontend)
+================================================
+
+{
+  "status": "success",
+  "data": {
+    "type": "audio_response", 
+    "main_content": "When you asked about sleep, the client mentioned waking up at 3 AM.",
+    
+    "media_payload": {
+      "audio_url": "https://s3.bucket/session_4.mp3",
+      "start_timestamp": 120.5,
+      "end_timestamp": 130.0,
+      "speaker": "Client"
+    },
+
+    "chart_payload": null,
+
+    "citations": [
+      {
+        "session_number": 4,
+        "timestamp": "02:00",
+        "snippet": "It's been terrible...",
+        "confidence_score": 0.89
+      }
+    ]
+  }
+}

@@ -112,3 +112,36 @@ def commit_annotation_transaction(
     except Exception as e:
         logger.error(f"[ANNOTATION TRANSACTION] RPC Failed: {e}")
         raise HTTPException(500, detail=f"Annotation Database Transaction Failed: {e}")
+
+
+def commit_embedding_transaction(
+    session_id: str,
+    summary_embedding: list[float],
+    utterances: list[dict]
+):
+    """
+    Commits the RAG embeddings to the database via RPC.
+    
+    Args:
+        session_id: UUID of the session.
+        summary_embedding: List of floats (1536 dim).
+        utterances: List of dicts. Each dict MUST look like: {"id": "uuid", "embedding": [0.1, ...]}
+    """
+    logger.info(f"[EMBEDDING TRANSACTION] RPC Commit for {session_id}")
+    
+    try:
+        # We send the utterances as a list of dicts. 
+        # Supabase/Postgres will handle the conversion to JSONB automatically.
+        response = get_supabase_client().rpc("commit_embedding", {
+            "p_session_id": session_id,
+            "p_summary_embedding": summary_embedding,
+            "p_utterances": utterances
+        }).execute()
+        
+        logger.success(f"[EMBEDDING TRANSACTION] Success. Session {session_id} marked as EMBEDDED.")
+        return response
+
+    except Exception as e:
+        logger.error(f"[EMBEDDING TRANSACTION] RPC Failed: {e}")
+        # We raise 500 because if this fails, we have a data consistency issue
+        raise HTTPException(500, detail=f"Embedding Database Transaction Failed: {e}")
