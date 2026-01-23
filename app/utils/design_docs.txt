@@ -123,3 +123,111 @@ keywords: Filter by exact text tokens (e.g., "Xanax").
     ]
   }
 }
+====================================================================
+======================================================================
+====================================================================
+
+{
+  "is_relevant": true,
+  "direct_response": null,
+  "rag_strategy": {
+    "intent": "retrieval",
+    "execution_mode": "hybrid_search",
+    "response_format": "audio_ref",
+    "relational_logic": "direct_match",
+    "aggregation_type": null,
+    "data_level": "utterance"
+  },
+  "scope": {
+    "mode": "specific_sessions",
+    "target_session_numbers": [4],
+    "temporal_window": null
+  },
+  "filters": {
+    "search_target_speaker": "Client",
+    "return_source_speaker": "Client",
+    "clinical_themes": [],
+    "keywords": [],
+    "filter_mode": "include",
+    "start_topic": null,
+    "end_topic": null
+  }
+}
+2. Flag Reference & Definitions
+Use this guide to implement the logic in rag_service.py and vector_service.py.
+
+A. rag_strategy.intent (The Goal)
+retrieval: Find specific moments or quotes.
+
+Query: "What did he say about his mother?"
+
+comparison: Compare two different data points or sessions.
+
+Query: "How is his anxiety today compared to Session 1?"
+
+summarization: Compress large text blocks into a summary.
+
+Query: "Give me a recap of the last 3 sessions."
+
+aggregation: Calculate statistics or time metrics.
+
+Query: "How many times did he mention suicide?" or "How long did we talk about trauma?"
+
+B. rag_strategy.execution_mode (The Search Method)
+hybrid_search: (Default) vector_similarity + keyword_filter (Qdrant). Best for semantic meaning.
+
+full_fetch_as_is: (No Vectors) SQL SELECT *. Used when the user wants "everything" from a session.
+
+keyword_only: (No Vectors) SQL ILIKE. Used for exact names or medication lookup.
+
+count_only: (No Text) SQL COUNT(*). Used for fast statistics.
+
+C. rag_strategy.response_format (The Frontend Output)
+text: Standard string response.
+
+audio_ref: Returns text + Audio URL + Start/End Timestamps (Triggers Audio Player).
+
+list: Returns a JSON array (e.g., bullet points of topics).
+
+number: Returns a raw integer or float (e.g., "14" or "12.5 minutes").
+
+D. rag_strategy.relational_logic (The "Hop" Logic)
+direct_match: (Default) Return exactly what was found in the search.
+
+next_utterance: Search X -> Return Sequence_ID(X) + 1. (Used for "What was his reaction?").
+
+previous_utterance: Search X -> Return Sequence_ID(X) - 1. (Used for "What led to that?").
+
+transition_search: Search Topic A and Topic B -> Return the chunk where they appear within N seconds of each other. (Used for "When did we switch topics?").
+
+E. rag_strategy.aggregation_type (Math Logic)
+null: (Default) No math required.
+
+count: Count the number of rows found.
+
+sum_duration: Calculate SUM(end_seconds - start_seconds) for all matches.
+
+F. scope.mode (Session Filtering)
+all_sessions: Search the entire history.
+
+latest_session: Restrict search to MAX(session_number).
+
+specific_sessions: Restrict to target_session_numbers (e.g., [1, 5]).
+
+range: Restrict to sessions between X and Y.
+
+last_n_sessions: Sort descending and take top N.
+
+G. filters.filter_mode (Negative Logic)
+include: (Default) Standard search. Find where the keywords exist.
+
+exclude: Find sessions/utterances where the keywords do NOT exist.
+
+Query: "Show me sessions where he did NOT mention his wife."
+
+H. filters (Extra Parameters)
+search_target_speaker: Who to search? (Client or Therapist).
+
+return_source_speaker: Who to show? (Client or Therapist).
+
+start_topic / end_topic: Used only when relational_logic is "transition_search".

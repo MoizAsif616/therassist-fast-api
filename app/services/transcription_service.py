@@ -115,8 +115,12 @@ async def transcribe_session(session_id: str, local_file_path: str | None = None
         asyncio.create_task(annotation_service(session_id))
 
         return {
-            "detail": "Transcriptioncomplete.",
+            "detail": "Transcription completed and further processing started.",
         }
+
+    except Exception as e:
+        logger.error(f"[TRANSCRIPTION] Transcription failed: {e}")
+        raise HTTPException(500, detail=f"Transcription failed: {e}")
 
     finally:
         if local_file_path and os.path.exists(local_file_path):

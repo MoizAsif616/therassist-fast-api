@@ -145,3 +145,39 @@ def commit_embedding_transaction(
         logger.error(f"[EMBEDDING TRANSACTION] RPC Failed: {e}")
         # We raise 500 because if this fails, we have a data consistency issue
         raise HTTPException(500, detail=f"Embedding Database Transaction Failed: {e}")
+    
+def commit_chat_history_transaction(
+    session_id: str,
+    client_id: str,
+    therapist_id: str,
+    query: str,
+    answer: str,
+    sources: list
+):
+    """
+    [DUMMY] Logs the chat interaction. 
+    In the future, this will call an RPC to save the 'chat_sessions' and 'chat_messages'.
+    
+    Args:
+        session_id: The specific session context (or 'global').
+        client_id: The patient being discussed.
+        therapist_id: The user asking the question.
+        query: The user's prompt.
+        answer: The AI's response.
+        sources: List of citations/references used.
+    """
+    logger.info(f"[CHAT TRANSACTION] Saving interaction for Client {client_id} (Session: {session_id})")
+    
+    try:
+        # -------------------------------------------------------
+        # TODO: Implement RPC 'save_chat_turn' later
+        # -------------------------------------------------------
+        
+        # Simulating successful DB write
+        logger.debug(f"[CHAT TRANSACTION] Query: {query[:30]}... | Answer Length: {len(answer)}")
+        return True
+
+    except Exception as e:
+        # We catch generic errors here so chat doesn't crash if logging fails
+        logger.error(f"[CHAT TRANSACTION] Failed to log history: {e}")
+        return False

@@ -10,13 +10,10 @@ from app.utils.promt_templates import CLINICAL_PROFILE_PROMPT, SESSION_SUMMARY_P
 
 # --- MODEL CONFIGURATION ---
 MODEL1_NAME = os.getenv("MODEL1_NAME")
-MODEL1_KEY = os.getenv("MODEL1_API_KEY")
-
 MODEL2_NAME = os.getenv("MODEL2_NAME")
-MODEL2_KEY = os.getenv("MODEL2_API_KEY")
-
 MODEL3_NAME = os.getenv("MODEL3_NAME")
-MODEL3_KEY = os.getenv("MODEL3_API_KEY")
+MODEL_KEY = os.getenv("MODEL_API_KEY")
+
 
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", 1))
 
@@ -24,11 +21,11 @@ MAX_RETRIES = int(os.getenv("MAX_RETRIES", 1))
 # 1. SUMMARY GENERATION
 # --------------------------------------------------------------
 async def generate_summary(session_id: str, text: str) -> str:
-    if not MODEL2_KEY:
+    if not MODEL_KEY:
         raise HTTPException(500, detail="Server misconfiguration: MODEL1_API_KEY missing.")
 
     headers = {
-        "Authorization": f"Bearer {MODEL2_KEY}",
+        "Authorization": f"Bearer {MODEL_KEY}",
         "Content-Type": "application/json",
         "HTTP-Referer": "http://localhost",
     }
@@ -90,10 +87,10 @@ async def generate_summary(session_id: str, text: str) -> str:
 # 2. THEME EXTRACTION
 # --------------------------------------------------------------
 async def generate_theme(session_id: str, text: str) -> dict:
-    if not MODEL3_KEY:
+    if not MODEL_KEY:
         raise HTTPException(500, detail="MODEL3_API_KEY missing.")
 
-    headers = {"Authorization": f"Bearer {MODEL3_KEY}", "Content-Type": "application/json", "HTTP-Referer": "http://localhost"}
+    headers = {"Authorization": f"Bearer {MODEL_KEY}", "Content-Type": "application/json", "HTTP-Referer": "http://localhost"}
     payload = {
         "model": MODEL3_NAME,
         "messages": [
@@ -180,9 +177,9 @@ async def generate_sentiment(session_id: str, text: str) -> float:
     try:
       logger.info(f"[TRANSCRIPTION UTILS] [SENTIMENT] Generating sentiment for Session {session_id}...")
       tasks = [
-          _fetch_single_sentiment(MODEL1_NAME, MODEL1_KEY, text),
-          _fetch_single_sentiment(MODEL2_NAME, MODEL2_KEY, text),
-          _fetch_single_sentiment(MODEL3_NAME, MODEL3_KEY, text)
+          _fetch_single_sentiment(MODEL1_NAME, MODEL_KEY, text),
+          _fetch_single_sentiment(MODEL2_NAME, MODEL_KEY, text),
+          _fetch_single_sentiment(MODEL3_NAME, MODEL_KEY, text)
       ]
       results = await asyncio.gather(*tasks)
     except Exception as e:
@@ -238,17 +235,17 @@ async def generate_clinical_profile(client_id: str, session_number: int, transcr
     )
 
     # --- 3. Setup Request ---
-    if not MODEL3_KEY:
-        raise HTTPException(500, detail="MODEL3_API_KEY missing.")
+    if not MODEL_KEY:
+        raise HTTPException(500, detail="MODEL2_API_KEY missing.")
 
     headers = {
-        "Authorization": f"Bearer {MODEL3_KEY}", 
+        "Authorization": f"Bearer {MODEL_KEY}", 
         "Content-Type": "application/json", 
         "HTTP-Referer": "http://localhost"
     }
     
     payload = {
-        "model": MODEL3_NAME,
+        "model": MODEL2_NAME,
         "messages": [
             {"role": "system", "content": "You are a clinical supervisor."},
             {"role": "user", "content": final_prompt},
@@ -301,7 +298,7 @@ async def identify_speaker_roles(utterances: list) -> dict:
     """
     import json # Importing here to ensure availability if not at top-level
 
-    if not MODEL3_KEY:
+    if not MODEL_KEY:
         logger.error("[TRANSCRIPTION UTILS] [ROLE_ID] MODEL3_API_KEY is missing.")
         raise HTTPException(500, detail="Server Configuration Error: MODEL3_API_KEY missing.")
 
@@ -323,7 +320,7 @@ async def identify_speaker_roles(utterances: list) -> dict:
         raise HTTPException(500, detail="Server Error: Prompt template missing.")
 
     headers = {
-        "Authorization": f"Bearer {MODEL3_KEY}",
+        "Authorization": f"Bearer {MODEL_KEY}",
         "Content-Type": "application/json",
         "HTTP-Referer": "http://localhost",
     }
@@ -394,13 +391,94 @@ async def identify_speaker_roles(utterances: list) -> dict:
             
             await asyncio.sleep(1)
 
+# async def impute_speaker_labels(cleaned_data: dict, role_map: dict) -> dict:
+#     """
+#     Replaces generic speaker labels (e.g., 'A', 'B') in the cleaned transcript
+#     with specific roles (e.g., 'Therapist', 'Client') using the provided map.
+#     """
+#     try:
+#         # 1. Validation: Ensure inputs are correct types
+#         if not isinstance(cleaned_data, dict) or "utterances" not in cleaned_data:
+#             logger.error(f"[IMPUTE] Invalid cleaned_data format. Expected dict with 'utterances' key.")
+#             raise HTTPException(
+#                 status_code=422, 
+#                 detail="Invalid input: 'cleaned_data' must be a dictionary containing an 'utterances' list."
+#             )
+        
+#         if not isinstance(role_map, dict) or not role_map:
+#             logger.warning("[IMPUTE] Role map is empty or invalid. Skipping imputation.")
+#             return cleaned_data
+
+#         logger.info(f"[IMPUTE] Applying role map: {role_map}")
+
+#         # 2. Imputation Logic
+#         # We process a Deep Copy to avoid mutating the original object if something fails halfway
+#         updated_utterances = []
+        
+#         for i, utterance in enumerate(cleaned_data["utterances"]):
+#             # Check for malformed utterance objects
+#             if not isinstance(utterance, dict) or "speaker" not in utterance:
+#                 logger.warning(f"[IMPUTE] Skipping malformed utterance at index {i}")
+#                 updated_utterances.append(utterance)
+#                 continue
+            
+#             original_speaker = utterance["speaker"]
+            
+#             # Replace if the speaker exists in our map, otherwise keep original
+#             new_speaker = role_map.get(original_speaker, original_speaker)
+            
+#             # Create new utterance object with updated speaker
+#             new_utterance = utterance.copy()
+#             new_utterance["speaker"] = new_speaker
+#             updated_utterances.append(new_utterance)
+
+#         # 3. Construct Result
+#         result = cleaned_data.copy()
+#         result["utterances"] = updated_utterances
+        
+#         logger.success(f"[IMPUTE] Successfully updated {len(updated_utterances)} utterances.")
+#         return result
+
+#     except HTTPException as he:
+#         # Re-raise HTTP exceptions so they pass through to the client
+#         raise he
+#     except Exception as e:
+#         # Catch generic python errors and convert to 500
+#         logger.error(f"[IMPUTE] Critical Failure: {str(e)}")
+#         raise HTTPException(
+#             status_code=500, 
+#             detail=f"Internal Server Error during speaker imputation: {str(e)}"
+#         )
+
+async def _parse_timestamp_to_seconds(timestamp_str: str) -> float:
+    """Converts 'MM:SS' or 'HH:MM:SS' to seconds (float)."""
+    if not timestamp_str: return 0.0
+    try:
+        parts = list(map(float, timestamp_str.split(':')))
+        if len(parts) == 3: return parts[0] * 3600 + parts[1] * 60 + parts[2]
+        if len(parts) == 2: return parts[0] * 60 + parts[1]
+        return float(parts[0])
+    except:
+        return 0.0
+
+# Add this helper at the top of the file
+def _parse_timestamp_to_seconds(timestamp_str: str) -> float:
+    if not timestamp_str: return 0.0
+    try:
+        parts = list(map(float, timestamp_str.split(':')))
+        if len(parts) == 3: return parts[0] * 3600 + parts[1] * 60 + parts[2]
+        if len(parts) == 2: return parts[0] * 60 + parts[1]
+        return float(parts[0])
+    except:
+        return 0.0
+
+# Updated function: Preserves your logic + adds RAG fields
 async def impute_speaker_labels(cleaned_data: dict, role_map: dict) -> dict:
     """
-    Replaces generic speaker labels (e.g., 'A', 'B') in the cleaned transcript
-    with specific roles (e.g., 'Therapist', 'Client') using the provided map.
+    Replaces generic labels with roles AND adds sequence/time metadata.
     """
     try:
-        # 1. Validation: Ensure inputs are correct types
+        # 1. Validation (Your existing logic)
         if not isinstance(cleaned_data, dict) or "utterances" not in cleaned_data:
             logger.error(f"[IMPUTE] Invalid cleaned_data format. Expected dict with 'utterances' key.")
             raise HTTPException(
@@ -415,10 +493,11 @@ async def impute_speaker_labels(cleaned_data: dict, role_map: dict) -> dict:
         logger.info(f"[IMPUTE] Applying role map: {role_map}")
 
         # 2. Imputation Logic
-        # We process a Deep Copy to avoid mutating the original object if something fails halfway
         updated_utterances = []
         
-        for i, utterance in enumerate(cleaned_data["utterances"]):
+        # CHANGED: Added 'start=1' to get the Sequence Number (1, 2, 3...)
+        for i, utterance in enumerate(cleaned_data["utterances"], start=1):
+            
             # Check for malformed utterance objects
             if not isinstance(utterance, dict) or "speaker" not in utterance:
                 logger.warning(f"[IMPUTE] Skipping malformed utterance at index {i}")
@@ -433,20 +512,31 @@ async def impute_speaker_labels(cleaned_data: dict, role_map: dict) -> dict:
             # Create new utterance object with updated speaker
             new_utterance = utterance.copy()
             new_utterance["speaker"] = new_speaker
+
+            # --- NEW LOGIC START ---
+            new_utterance["sequence_number"] = i
+            
+            # Robustly get start/end string and convert to float
+            # Checks 'start' (assemblyAI default) OR 'start_time'
+            raw_start = utterance.get("start") or utterance.get("start_time")
+            raw_end = utterance.get("end") or utterance.get("end_time")
+
+            new_utterance["start_seconds"] = _parse_timestamp_to_seconds(raw_start)
+            new_utterance["end_seconds"] = _parse_timestamp_to_seconds(raw_end)
+            # --- NEW LOGIC END ---
+
             updated_utterances.append(new_utterance)
 
         # 3. Construct Result
         result = cleaned_data.copy()
         result["utterances"] = updated_utterances
         
-        logger.success(f"[IMPUTE] Successfully updated {len(updated_utterances)} utterances.")
+        logger.success(f"[IMPUTE] Successfully updated {len(updated_utterances)} utterances with Sequence IDs.")
         return result
 
     except HTTPException as he:
-        # Re-raise HTTP exceptions so they pass through to the client
         raise he
     except Exception as e:
-        # Catch generic python errors and convert to 500
         logger.error(f"[IMPUTE] Critical Failure: {str(e)}")
         raise HTTPException(
             status_code=500, 
