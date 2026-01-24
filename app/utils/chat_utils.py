@@ -206,7 +206,8 @@ async def route_query_intent(
     updated_at: str, 
     profile: str, 
     emotions: Any
-) -> RouterOutput:
+):
+# ) -> RouterOutput:
     """
     Uses LLM to decompose and classify intent into a Master Execution Plan.
     STRICT MODE: Raises exception on failure.
@@ -218,7 +219,7 @@ async def route_query_intent(
     
     # 2. Prepare Dynamic System Context (CRITICAL for 'Router Known' queries)
     # We format the emotion map nicely if it's a dict, otherwise stringify it.
-    # formatted_emotions = json.dumps(emotions, indent=2) if isinstance(emotions, (dict, list)) else str(emotions)
+    formatted_emotions = json.dumps(emotions, indent=2) if isinstance(emotions, (dict, list)) else str(emotions)
 
     # context_instruction = f"""
     # ### 7. CURRENT SYSTEM CONTEXT (DYNAMIC)
@@ -236,8 +237,14 @@ async def route_query_intent(
     Total Sessions: {total_sessions}
     Session are numbered starting from 1 onwards.
     Last session added to knowledge-base on: {updated_at}
-    NOTE: STRICTLY FOLLOW THE OUTPUT FORMAT INSTRCUTIONS
+    ### CRITICAL: Emotion map for specific session is different from aggregated emotion map i.e emotionmap in client_insights.
+    ### CRITICAL: Client profile/ Client summary/ Pathiet profile/ Clinicalprofile all means the same i.e clinical profile.
+    ### CRITICAL: emotion map is not sorted wrt to the counts(values). If most prevalent emotion is asked tell tthe user all those emotion labels that has value = maximum value and vice versa.
+    ### CRITICAL: STRICTLY FOLLOW THE OUTPUT FORMAT INSTRCUTIONS AND NEVER DISCLOSE THE NAMES OF THE TABLES OR THE ATTRIBUTES OR ANY INFORMATION YOU ARE PROVIDED.
+    ### CRITICAL: For the subqueries that requires vector similarity search, you must have the 2 sub-queries one for vector similarity search and another for the theme search in clinical themes of utterances.
     """
+    # Client Aggregated Emotion Map (Built accross all the sessions): {formatted_emotions}
+
     # 3. Construct the User Message
     user_message_content = (
         f"{context_instruction}\n\n"
