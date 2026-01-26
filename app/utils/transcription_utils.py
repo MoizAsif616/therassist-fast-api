@@ -20,7 +20,7 @@ MAX_RETRIES = int(os.getenv("MAX_RETRIES", 1))
 # --------------------------------------------------------------
 # 1. SUMMARY GENERATION
 # --------------------------------------------------------------
-async def generate_summary(session_id: str, text: str) -> str:
+async def generate_summary(session_number: int, text: str) -> str:
     if not MODEL_KEY:
         raise HTTPException(500, detail="Server misconfiguration: MODEL1_API_KEY missing.")
 
@@ -33,12 +33,12 @@ async def generate_summary(session_id: str, text: str) -> str:
         "model": MODEL2_NAME,
         "messages": [
             {"role": "system", "content": "You summarize therapy sessions professionally."},
-            {"role": "user", "content": SESSION_SUMMARY_PROMPT.format(transcription_text=text)},
+            {"role": "user", "content": SESSION_SUMMARY_PROMPT.format(transcription_text=text, session_number=session_number)},
         ]
     }
 
     try:
-        logger.info(f"[TRANSCRIPTION UTILS] [SUMMARY] Generating summary for Session {session_id}...")
+        logger.info(f"[TRANSCRIPTION UTILS] [SUMMARY] Generating summary for Session")
         
         # --- ADDED RETRY LOOP (3 Attempts) ---
         max_retries = MAX_RETRIES
@@ -86,7 +86,7 @@ async def generate_summary(session_id: str, text: str) -> str:
 # --------------------------------------------------------------
 # 2. THEME EXTRACTION
 # --------------------------------------------------------------
-async def generate_theme(session_id: str, text: str) -> dict:
+async def generate_theme(session_number: int, text: str) -> dict:
     if not MODEL_KEY:
         raise HTTPException(500, detail="MODEL3_API_KEY missing.")
 
@@ -101,7 +101,7 @@ async def generate_theme(session_id: str, text: str) -> dict:
     }
 
     try:
-        logger.info(f"[TRANSCRIPTION UTILS] [SESSION THEME] Extracting theme for Session {session_id}...")
+        logger.info(f"[TRANSCRIPTION UTILS] [SESSION THEME] Extracting theme for Session")
         
         # --- ADDED RETRY LOOP (3 Attempts) ---
         max_retries = MAX_RETRIES
@@ -202,7 +202,7 @@ async def generate_clinical_profile(client_id: str, session_number: int, transcr
     """
 
     # --- 1. Fetch Existing Profile (Context) ---
-    logger.info(f"[TRANSCRIPTION UTILS] [PROFILE] Fetching history for Client {client_id}...")
+    logger.info(f"[TRANSCRIPTION UTILS] [PROFILE] Fetching history for Client")
     existing_history = "No prior history. This is the Initial Assessment (Session 1)."
 
     try:
@@ -299,7 +299,7 @@ async def identify_speaker_roles(utterances: list) -> dict:
     import json # Importing here to ensure availability if not at top-level
 
     if not MODEL_KEY:
-        logger.error("[TRANSCRIPTION UTILS] [ROLE_ID] MODEL3_API_KEY is missing.")
+        logger.error("[TRANSCRIPTION UTILS] [ROLE_ID] MODEL_API_KEY is missing.")
         raise HTTPException(500, detail="Server Configuration Error: MODEL3_API_KEY missing.")
 
     # 1. Prepare the dialogue sample (First 20 turns)

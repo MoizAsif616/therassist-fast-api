@@ -2,108 +2,66 @@ import asyncio
 from loguru import logger
 from fastapi import HTTPException
 
-# Schema Imports
-from app.schemas.chat_schemas import ChatRequest, ChatResponse, Source
-
 # Logic Imports
 from app.utils.chat_utils import (
+    execute_retrieval_pipeline,
     route_query_intent, 
-    execute_retrieval, 
-    generate_clinical_answer,
     fetch_client_context
 )
-from app.utils.transaction_utils import commit_chat_history_transaction
 from app.utils.db_utils import get_session_number
+from app.utils.embedding_utils import generate_query_embedding
 
 async def chat_service(
-    request: ChatRequest,
-    therapist_id: str
-) -> ChatResponse:
+    query: str,
+    client_id: str,
+    therapist_id: str,
+    session_id: str | None = None
+):
     """
-    Strict RAG Pipeline. 
-    Raises HTTPExceptions immediately if Router or Generator fails.
+    RAG Pipeline (Stage 1: Router Only)
+    Analyzes the user's query and returns the execution plan.
     """
     try:
-        logger.info(f"[CHAT SERVICE] Processing query for Client {request.client_id}")
+        logger.info(f"[CHAT SERVICE] Processing query for Client {client_id}")
 
-        # 0. Context Prep
         current_session_number = None
-        if request.session_id:
-            current_session_number, client_context = await asyncio.gather(
-                get_session_number(request.session_id),
-                fetch_client_context(request.client_id)
-            )
+        client_context = await fetch_client_context(client_id)
+        
+        if session_id:
+            try:
+                current_session_number = await get_session_number(session_id)
+            except Exception as e:
+                logger.warning(f"[CHAT SERVICE] Invalid Session ID provided: {e}")
+                raise HTTPException(status_code=400, detail="Invalid Session ID provided.")
 
         router_plan = await route_query_intent(
-            query=request.query, 
-            chat_history=request.chat_history, 
+            query=query, 
+            chat_history=[], 
             current_session_number=current_session_number,
-            total_sessions=client_context.get("session_count"),
-            updated_at=client_context.get("updated_at"),
-            profile=client_context.get("profile"),
-            emotions=client_context.get("emotions")
+            total_sessions=client_context.get("session_count", 0),
+            updated_at=str(client_context.get("updated_at", "")),
+            profile=client_context.get("profile", ""),
+            emotions=client_context.get("emotions", {})
         )
+
+        # embedding_task = generate_query_embedding(query)
+
+        logger.info("[CHAT SERVICE] Running Router and Embedding in parallel...")
         
-        logger.info(f"[CHAT SERVICE] Router Plan: {router_plan}")
-        # 2. SHORT CIRCUIT (Irrelevant Query)
-        # if not router_plan.is_relevant:
-        #     logger.info("[CHAT SERVICE] Query deemed irrelevant.")
-        #     refusal_msg = router_plan.direct_response or "I can only assist with therapeutic analysis."
-            
-        #     # Log the rejection
-        #     commit_chat_history_transaction(
-        #         session_id=request.session_id or "global",
-        #         client_id=request.client_id,
-        #         therapist_id=therapist_id,
-        #         query=request.query,
-        #         answer=refusal_msg,
-        #         sources=[]
-        #     )
-        #     return ChatResponse(answer=refusal_msg, sources=[])
+        # Await both
+        # router_plan, query_embedding = await asyncio.gather(router_task, embedding_task)
+        logger.debug(f"[CHAT SERVICE] Router Plan: {router_plan}")
 
-        # # 3. RETRIEVAL
-        # context_data = await execute_retrieval(router_plan, request.client_id, request.query)
-        
-        # # 4. GENERATION
-        # # If Generator fails (429/500), it raises Exception here.
-        # answer_text = await generate_clinical_answer(request.query, context_data, client_context)
-        
-        # # 5. LOGGING & RESPONSE
-        # final_sources = [
-        #     Source(
-        #         source_type=item.get("source_type", "text"),
-        #         session_number=item.get("session_number", 0),
-        #         sequence_number=item.get("sequence_number"),
-        #         timestamp=str(item.get("start_seconds", 0)),
-        #         confidence=item.get("score", 1.0)
-        #     ) for item in context_data
-        # ]
+        logger.info(f"[CHAT SERVICE] Router generated {len(router_plan.sub_queries)} sub-queries.")
+        retrieved_context_sequence = await execute_retrieval_pipeline(router_plan, client_id)
 
-        # commit_chat_history_transaction(
-        #     session_id=request.session_id or "global",
-        #     client_id=request.client_id,
-        #     therapist_id=therapist_id,
-        #     query=request.query,
-        #     answer=answer_text,
-        #     sources=[s.dict() for s in final_sources]
-        # )
-
-        logger.success(f"[CHAT SERVICE] Answered for Client {request.client_id}")
-
-        return ChatResponse(
-            answer="answer_text",
-            # sources=final_sources,
-            sources=[],
-            # meta_data={"strategy": router_plan.rag_strategy.dict()}
-            meta_data=None
-        )
+        # Returning the plan directly (Pydantic Object)
+        return retrieved_context_sequence
 
     except HTTPException as he:
-        # 1. Pass through specific HTTP errors (like 429 Too Many Requests)
-        # This ensures the Frontend gets the exact error code.
+        # Pass through specific HTTP errors (like 502 Bad Gateway from Router)
         raise he
         
     except Exception as e:
-        # 2. Catch unexpected server crashes and return 500
         logger.error(f"[CHAT SERVICE] Critical Failure: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error during chat processing.")

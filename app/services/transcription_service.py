@@ -66,18 +66,28 @@ async def transcribe_session(session_id: str, local_file_path: str | None = None
         
         logger.info(f"[TRANSCRIPTION] Speaker roles identified: {role_map}")
         
-        # 3. Calculate Speaker Stats
-        t_time, t_count, c_time, c_count = 0, 0, 0, 0
-        for u in raw_data.get("utterances", []):
-            dur = u.get("end") - u.get("start")
-            if u.get("speaker") == 'A': t_count += 1; t_time += dur
-            elif u.get("speaker") == 'B': c_count += 1; c_time += dur
+        t_time, t_count, c_time, c_count = 0.0, 0, 0.0, 0
         
+        for u in cleaned_data["utterances"]:
+            start = float(u.get("start", 0))
+            end = float(u.get("end", 0))
+            dur = end - start
+            
+            speaker = u.get("speaker") 
+
+            if speaker == "Therapist":
+                t_count += 1
+                t_time += dur
+            elif speaker == "Client":
+                c_count += 1
+                c_time += dur
+        
+        # Explicitly ensure floats for Postgres Double Precision
         stats = {
-            "therapist_time": round(t_time / 1000.0, 2),
-            "therapist_count": t_count,
-            "client_time": round(c_time / 1000.0, 2),
-            "client_count": c_count
+            "therapist_time": float(round(t_time / 1000.0, 2)), 
+            "therapist_count": int(t_count),
+            "client_time": float(round(c_time / 1000.0, 2)),    
+            "client_count": int(c_count)
         }
         try:
             client_id = session["client_id"]
@@ -88,13 +98,13 @@ async def transcribe_session(session_id: str, local_file_path: str | None = None
 
         # 4. Generate AI Insights (Parallel)
         logger.info(f"[TRANSCRIPTION] Exracting insights.")
-        full_text = cleaned_data["text"]
+        full_text = cleaned_data["utterances"]
         
         summary, sentiment, theme_data, client_profile_text = await asyncio.gather(
-            generate_summary(session_id, full_text),
-            generate_sentiment(session_id, full_text),
-            generate_theme(session_id, full_text),
-            generate_clinical_profile(client_id, session_number, full_text)
+            generate_summary(session_number, full_text),
+            generate_sentiment(session_number, full_text),
+            generate_theme(session_number, full_text),
+            generate_clinical_profile(client_id=client_id, session_number=session_number, transcript_text=full_text)
         )
 
         # 5. Atomic DB Commit
@@ -123,6 +133,10 @@ async def transcribe_session(session_id: str, local_file_path: str | None = None
         raise HTTPException(500, detail=f"Transcription failed: {e}")
 
     finally:
-        if local_file_path and os.path.exists(local_file_path):
-            try: os.remove(local_file_path)
-            except: pass
+        # Check 'file_path', not 'local_file_path'
+        if 'file_path' in locals() and file_path and os.path.exists(file_path):
+            try: 
+                os.remove(file_path)
+                logger.info(f"[TRANSCRIPTION] Cleaned up file: {file_path}")
+            except Exception as e: 
+                logger.warning(f"[TRANSCRIPTION] Failed to delete temp file: {e}")

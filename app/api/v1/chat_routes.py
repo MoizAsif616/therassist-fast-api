@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from loguru import logger
-
-# Schemas
-from app.schemas.chat_schemas import ChatRequest, ChatResponse
+from typing import List, Any
+from app.schemas.chat_schemas import ChatRequest, RouterOutput 
 
 # Services & Dependencies
 from app.services.auth_service import authenticate
@@ -12,21 +11,12 @@ from app.services.chat_service import chat_service
 
 router = APIRouter()
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post("/chat", response_model=List[Any]) # Updated to return the Plan
 async def chat_endpoint(
     payload: ChatRequest,
     therapist_id: str = Depends(authenticate)
 ):
-    """
-    Clinical RAG Chat Interface.
     
-    - **Authentication**: Verified via JWT.
-    - **Authorization**: Checks if Therapist has access to the requested Client.
-    - **Context**: Can be Global (All Sessions) or Local (Specific Session ID).
-    """
-    
-    # 1. Security Check: Client Access
-    # Ensure this therapist is allowed to view this client's data
     if not client_exists(payload.client_id, therapist_id):
         logger.warning(f"[CHAT ROUTE] Access Denied. T:{therapist_id} -> C:{payload.client_id}")
         raise HTTPException(
@@ -34,27 +24,29 @@ async def chat_endpoint(
             detail="You do not have permission to access this client's data."
         )
 
-    # 2. Context Check: Session Access (Optional)
-    # If the user is chatting *inside* a specific session view, verify ownership
     if payload.session_id:
         try:
             check_session_ownership(payload.session_id, payload.client_id, therapist_id)
         except HTTPException:
-            logger.warning(f"[CHAT ROUTE] Session Accessd denied.")
+            logger.warning(f"[CHAT ROUTE] Session Access denied for {payload.session_id}")
             raise HTTPException(
                 status_code=400, 
                 detail="The specified session does not belong to this client."
             )
     else:
-        logger.error(f"[CHAT ROUTE] Invalid session id")
+        logger.error(f"[CHAT ROUTE] No session_id provided.")
         raise HTTPException(
             status_code=400, 
-            detail="Invalid session id."
+            detail="No session_id provided."
         )
 
     logger.info(f"[CHAT ROUTE] Query received from T:{therapist_id}")
 
-    # 3. Execute Service
-    result = await chat_service(payload, therapist_id)
+    result = await chat_service(
+        query=payload.query,
+        client_id=payload.client_id,
+        therapist_id=therapist_id,
+        session_id=payload.session_id
+    )
 
     return result

@@ -1,194 +1,223 @@
 # app/utils/prompt_templates.py
 
 SESSION_SUMMARY_PROMPT = """
-You are an expert clinical(Theraputic) assistant.
+You are an expert Clinical Supervisor.
+Your task is to analyze the LABELED TRANSCRIPT of a therapy session and extract structured clinical metadata.
+current_session_number = {session_number}
+### INPUT DATA
+The labeled transcript.
+- THERAPIST: The guide/clinician.
+- CLIENT: The patient/focus of the analysis.
 
-Given the full conversation transcription between a therapist and a client,
-write a clear, concise, neutral, clinically useful session summary.
+### GUIDELINES
+1. Focus on the Client: Your summary must focus on the Client's reported experiences, symptoms, and breakthroughs. Use the Therapist's lines only as context to understand what prompted the Client.
+2. Strict Attribution: DO NOT attribute the Therapist's insights to the Client.
+   - Bad: "Client noted that progress is being made" (If Therapist said it).
+   - Good: "Therapist noted progress, and Client agreed."
+3. No Hallucinations: If the text does not explicitly state a diagnosis or detail, do not invent it.
 
-Requirements:
-- The summary must include the key points discussed during the session.
-- Use professional and neutral language.
-- Avoid any subjective opinions or interpretations.
-- Maximum Length: 350 words. Do not force length; if the session was short, keep the summary brief and dense.
-- You can add information like the confidence level, anxiety level, mood, and other relevant clinical observations based on the conversation but they must be relevant.
-- Mark down formatting is strictly prohibited. NO headings, bolding, or italics. IF there has to be bullet points, use simple dashes (-). there can be multiple paragraphs but no markdown syntax.
+### OUTPUT FORMAT (PLAIN TEXT ONLY)
+Provide the output as simple, plain text with no Markdown formatting (no asterisks, hashes, or bolding). 
+Write three distinct sections. Separate each section with a blank line. Use the exact capitalized labels below:
 
-Here is the full transcription:
+EXECUTIVE SUMMARY:
+(Write a concise paragraph of 50-300 words covering the arc of the session: the presenting problem, key discussion points, and resolution.)
 
+KEY TOPICS:
+(Write a short paragraph or comma-separated sentence listing the main subjects discussed.)
+
+CLINICAL OBSERVATIONS:
+(Write a short paragraph noting the client's demeanor, emotional shifts, or resistance. Cite specific Sequence IDs if relevant, e.g., "around Turn #15".)
+
+### Labeled TRANSCRIPT:
 {transcription_text}
 """
 
 SENTIMENT_ANALYSIS_PROMPT = """
-You are an expert clinical psychologist AI analyzing a therapy session transcription.
+You are an expert Clinical AI tasked with quantifying the emotional state of a therapy client.
 
-**Task:**
-Analyze the emotional tone and sentiment of the **client's utterances only**. The therapist's words should provide context but should NOT influence the sentiment score directly.
+### INPUT DATA
+The user has provided a **LABELED TRANSCRIPT** where speakers are clearly identified (e.g., "Client:", "Therapist:", "Patient:").
 
-**Context:**
-This is a conversation between a Therapist and a Client. You must differentiate between them based on the speaker labels or context cues if labels are missing.
+### YOUR GOAL
+Calculate a "Clinical Sentiment Score" (-1.0 to +1.0) strictly for the **CLIENT**.
+You must completely ignore the Therapist's sentiment score; use their words ONLY to understand the context of what the Client is reacting to.
 
-**Scoring Criteria:**
-Provide a single sentiment score ranging from -1.00 (Extremely Negative/Distressed) to +1.00 (Extremely Positive/Stable).
-- **-1.0 to -0.6**: Severe distress, suicidal ideation, crisis, hopelessness, or intense anger.
-- **-0.5 to -0.2**: Anxiety, sadness, frustration, confusion, or general struggle.
-- **-0.1 to +0.1**: Neutral, calm, or factual recounting of events without strong emotion.
-- **+0.2 to +0.5**: Hopeful, insightful, making progress, expressing gratitude or relief.
-- **+0.6 to +1.0**: Joyful, stable, celebrating success, or expressing deep satisfaction.
+### ANALYSIS RULES
+1. **Target Speaker:** Analyze ONLY the lines labeled **"Client"** or **"Patient"**. 
+2. **Weighted Scoring (CRITICAL):** Do not simply "average" the sentiment of every sentence.
+   - **Prioritize Emotional Peaks:** A session that is 90% neutral conversation but contains a single, specific moment of deep despair or suicidal ideation must result in a negative score (e.g., -0.7), reflecting the clinical reality of the crisis.
+   - **Ignore "Social Masking":** Discount polite openers (e.g., "I'm doing fine") if they are contradicted by later details of struggle.
+3. **Contextual Awareness:** If the Therapist says "You seem happy" and the Client agrees, count it. If the Therapist says "You seem happy" and the Client stays silent or disagrees, ignore the Therapist's assessment.
 
-**Output Format:**
-You may provide a brief (1 sentence) explanation of your reasoning, but you **MUST** end your response with the exact string "SENTIMENT_SCORE:" followed by the number.
+### SCORING SCALE
+- **-1.0 to -0.6 (Distress/Crisis):** Severe distress, suicidal ideation, hopelessness, intense anger, or panic.
+- **-0.5 to -0.2 (Struggle):** Anxiety, sadness, frustration, confusion, or clear emotional difficulty.
+- **-0.1 to +0.1 (Neutral):** Factual recounting, calm reflection, or balanced emotions without strong polarity.
+- **+0.2 to +0.5 (Positive):** Hopeful, insightful, making progress, expressing gratitude, or relief.
+- **+0.6 to +1.0 (Thriving):** Joyful, stable, celebrating success, or expressing deep satisfaction.
 
-Example Response:
-The client expressed significant anxiety about their job but showed hope regarding their relationship progress.
-SENTIMENT_SCORE: -0.25
+### OUTPUT FORMAT
+1. **Score:** The exact string "SENTIMENT_SCORE:" followed by the float value.
 
-**Transcription:**
+### TRANSCRIPTION:
 {transcription_text}
 """
 
 THEME_EXTRACTION_PROMPT = """
 You are an expert Clinical Supervisor analyzing a therapy session transcription.
 
-**Task:**
-Identify the **Primary Clinical Theme** of this session. You must select **EXACTLY ONE** theme from the list below.
-Once you identify the theme, you must output the corresponding **Standard Explanation** provided in the list. Do not write your own explanation.
-If multiple themes are present, select the SINGLE most dominant theme that consumed the majority of the session time.
+### INPUT DATA
+The user has provided a **LABELED TRANSCRIPT**.
+Each line contains metadata (Sequence Number, Start/End Time, Speaker Label) followed by the spoken text.
+**Instruction:** You must read the dialogue to understand the content. Use the **Therapist's interventions** (questions, explanations, techniques) and the **Client's focus** to determine the session's goal.
 
-**List of Themes & Standard Explanations:**
+### TASK
+Identify the **Primary Clinical Theme** of this session.
+1. **Single Selection:** You must select **EXACTLY ONE** theme from the list below.
+2. **Dominance Rule:** If multiple themes appear, select the ONE that consumed the majority of the conversation time or was the main "goal" of the session.
+3. **Strict Output:** Once you identify the theme, you must output the corresponding **Standard Explanation** provided in the list. **DO NOT** write your own explanation. Copy the text exactly.
+
+### LIST OF THEMES & STANDARD EXPLANATIONS (Select One)
 
 1. **Intake & Diagnosis**
    Standard Explanation: Focused on initial assessment, history taking, symptom review, and diagnostic formulation.
-
 2. **Rapport Building**
    Standard Explanation: Focused on establishing the therapeutic alliance, building trust, and setting boundaries.
-
 3. **Crisis Intervention**
    Standard Explanation: Focused on managing acute risks, safety planning, de-escalation, or immediate stabilization.
-
 4. **Psychoeducation**
    Standard Explanation: Focused on teaching the client about mental health conditions, symptoms, or brain function.
-
 5. **Cognitive Restructuring**
    Standard Explanation: Focused on identifying and challenging cognitive distortions, automatic thoughts, or reframing.
-
 6. **Behavioral Activation**
    Standard Explanation: Focused on scheduling positive activities to combat depression, lethargy, or withdrawal.
-
 7. **Exposure Therapy**
    Standard Explanation: Focused on systematic desensitization or facing feared stimuli and situations.
-
 8. **Emotional Regulation**
    Standard Explanation: Focused on teaching skills to manage intense affect, anger, panic, or distress tolerance.
-
 9. **Mindfulness & Grounding**
    Standard Explanation: Focused on practicing present-moment awareness, breathing, or anchoring techniques.
-
 10. **Trauma Processing**
     Standard Explanation: Focused on discussing past traumatic events, PTSD symptoms, or narrative exposure work.
-
 11. **Grief & Loss**
     Standard Explanation: Focused on processing bereavement, separation, job loss, or significant life transitions.
-
 12. **Interpersonal Effectiveness**
     Standard Explanation: Focused on discussing communication skills, assertiveness, or social interactions.
-
 13. **Relationship/Couples Work**
     Standard Explanation: Focused on addressing romantic partnership dynamics, infidelity, or intimacy issues.
-
 14. **Family Dynamics**
     Standard Explanation: Focused on exploring family-of-origin issues, parenting struggles, or systemic conflicts.
-
 15. **Identity & Self-Esteem**
     Standard Explanation: Focused on exploring self-worth, core beliefs, personal values, or imposter syndrome.
-
 16. **Insight & Exploration**
     Standard Explanation: Focused on psychodynamic exploration of unconscious patterns or root causes.
-
 17. **Substance Use & Recovery**
     Standard Explanation: Focused on addressing addiction, cravings, relapse prevention, or harm reduction.
-
 18. **Habit Change**
     Standard Explanation: Focused on working on impulse control, procrastination, eating behaviors, or discipline.
-
 19. **Sleep & Somatic Issues**
     Standard Explanation: Focused on addressing insomnia, chronic pain, or the body-mind connection.
-
 20. **Motivation & Goal Setting**
     Standard Explanation: Focused on Motivational Interviewing, clarifying ambivalence, or setting SMART goals.
-
 21. **Existential & Meaning**
     Standard Explanation: Focused on discussing purpose, mortality, spirituality, or life direction.
-
 22. **Work & Academic Stress**
     Standard Explanation: Focused on addressing burnout, career changes, or performance anxiety.
-
 23. **Acceptance Strategies**
     Standard Explanation: Focused on practicing radical acceptance or willingness to experience difficult emotions.
-
 24. **Parts Work**
     Standard Explanation: Focused on exploring internal conflict, the inner child, or distinct self-states.
-
 25. **Social Skills Training**
     Standard Explanation: Focused on role-playing or coaching on social cues and connection.
-
 26. **Attachment Repair**
     Standard Explanation: Focused on working on attachment styles and security in relationships.
-
 27. **Perinatal & Reproductive Mental Health**
     Standard Explanation: Focused on issues related to pregnancy, postpartum, infertility, or loss.
-
 28. **Cultural & Social Justice**
     Standard Explanation: Focused on discussing impacts of discrimination, acculturation, or systemic oppression.
-
 29. **Progress Review**
     Standard Explanation: Focused on evaluating treatment gains, celebrating milestones, or maintenance planning.
-
 30. **Termination & Closure**
     Standard Explanation: Focused on discussing the end of therapy, relapse prevention planning, and goodbyes.
 
-**Output Format:**
-You must strictly follow this format. Do not use Markdown (bolding/italics).
+### OUTPUT FORMAT (Strict Plain Text)
+You must strictly follow this format. Do not use Markdown (no bolding, no italics, no code blocks).
 
 THEME: [Exact Theme Name]
 EXPLANATION: [Exact Standard Explanation provided above]
 
-**Transcription:**
+### TRANSCRIPT:
 {transcription_text}
 """
 
 CLINICAL_PROFILE_PROMPT = """
-You are an expert Clinical Supervisor maintaining a longitudinal "Clinical Profile" for a patient.
-Your goal is to MERGE (integrate) new insights from the provided TRANSCRIPT into the existing profile.
+You are an expert Clinical Supervisor managing a "Living Clinical Profile" for a client.
+Your goal is to update the client's comprehensive history by integrating data from the NEW TRANSCRIPT (Session #{session_number}) into the EXISTING PROFILE.
+
+### INPUTS
+1. **Existing Profile:** The client's history up to the previous session.
+2. **New Transcript:** The verbatim content of Session #{session_number}.
+
+### YOUR MANDATE
+You must output a rewritten, fully updated profile. You are responsible for ensuring NO critical details from past sessions are lost.
+You must perform two distinct tasks:
+1. **Preservation:** Add the key takeaways of Session #{session_number} to the chronological history log.
+2. **Synthesis:** Update the overall clinical analysis and risk profile based on the *cumulative* data.
+
+### GUIDELINES & ANTI-HALLUCINATION PROTOCOL
+1. **Explicit Evidence Only:** Do NOT infer demographics or facts. 
+   - *Bad:* "Client sounds young, so Age: 20." 
+   - *Good:* "Age: Not Reported (Client has not stated age)."
+2. **Session-by-Session Tracking:** You MUST maintain a specific section that lists the core breakthrough or topic of *every* single session stored in the history. Do not delete past session summaries.
+3. **Comparative Analysis:** In the "Longitudinal Progress" section, you MUST explicitly compare the current session to previous ones (e.g., "Client is more vocal today compared to the withdrawal seen in Session #1").
+4. **Safety First:** Update the Risk Factors immediately if the new transcript indicates self-harm, suicide, or danger to others.
+5. **Tone:** Professional, clinical, and objective.
+
+### REQUIRED OUTPUT SECTIONS (Use these exact UPPERCASE labels):
+
+PATIENT SUMMARY
+- Demographics: (Age, Gender, Occupation, Marital Status). *Instruction:* Write "Not Reported" if not explicitly stated in text.
+- Presenting Problem: (The core reason they started therapy).
+- Key Personality Traits: (Observed consistency in behavior).
+
+SESSION-BY-SESSION HISTORY
+- *Instruction:* Provide a bulleted list summarizing the ONE major takeaway from EACH session number recorded so far.
+- *Format:* "Session X: [Key topic/breakthrough]"
+- *Update Rule:* Add "Session #{session_number}: [Summary of current session]" to this list.
+
+DIAGNOSTIC & CLINICAL IMPRESSION
+- Current working hypothesis or diagnosis (if applicable).
+- Dominant clinical themes (e.g., Abandonment, Perfectionism, Anxiety).
+- Behavioral observations from the latest session (e.g., Affect, Tone, Resistance).
+
+LONGITUDINAL PROGRESS & COMPARISON
+- Compare Session #{session_number} vs. Past Sessions.
+- Trajectory: Is the client improving, stagnating, or regressing?
+- Citing specific sessions, note changes in coping mechanisms or insight.
+
+RISK FACTORS
+- Current Risk Status (Low/Medium/High).
+- History of Risk (Cite specific past sessions where risk was noted).
+
+THERAPEUTIC FOCUS & PLAN
+- Recommended topics for the *next* session.
+- Effective interventions (What worked in this session?).
+- Topics to avoid or handle with care.
 
 ---
-### 1. EXISTING PROFILE (History)
+**OUTPUT RULES:**
+- Return ONLY the updated profile text.
+- NO MARKDOWN formatting (No bold `**`, no italics `*`, no headers `##`).
+- Use standard hyphens (-) for lists.
+- Ensure the "SESSION-BY-SESSION HISTORY" includes the new session.
+### INPUT DATA:
+**1. EXISTING PROFILE (History):**
 {existing_profile_history}
 
----
-### 2. NEW SESSION TRANSCRIPT (Session #{session_number})
-{transcription_text} 
+**2. LABELED TRANSCRIPT (Session #{session_number}):**
+{transcription_text}
 
----
-### YOUR TASK
-Rewrite the Clinical Profile to incorporate findings from Session #{session_number}.
-
-### GUIDELINES:
-1.  **Session Tracking:** You MUST explicitly cite "Session #{session_number}" when noting new progress, improvements, or risks.
-2.  **Update Strategy:** Do not just append. Integrate the new facts into the relevant sections.
-3.  **Risk Assessment:** If the transcript shows self-harm or danger, highlight it immediately.
-4.  **Format:** Keep it under 800 words. Use a professional medical tone.
-
-### STRUCTURE (Do not use Markdown like ** or ##. Use UPPERCASE LABELS):
-Organize the profile using these exact uppercase labels to separate sections:
-PATIENT SUMMARY: (Demographics and core issue)
-DIAGNOSTIC IMPRESSION: (Current working diagnosis)
-CLINICAL PROGRESS: (Longitudinal changes, citing specific sessions)
-RISK FACTORS: (Current safety status)
-TREATMENT PLAN: (Next steps)
-
-Return ONLY the updated profile text.
-NO MARKDOWN FORMATTING (No bold, italics, or headers). Use simple dashes (-) for lists.
 """
 
 
@@ -280,6 +309,7 @@ You must flag a sub-query as irrelevant and provide a distinct `reason` string i
 * **When you can answer the question directly without database access and disclosing therassist schema and related private aspects you know of.**
 * **Definitions & Schema Concepts:** Questions asking *what* a metric means, *how* it is calculated, or the *difference* between two terms (e.g., "What is sentiment score?", "Difference between client and session maps").
     * **ACTION:** You MUST answer these using the descriptions provided in the DATABASE SCHEMA section. Set `is_relevant: false` and write the explanation in the `reason` field.
+* **When you are asked to provide the image, videos, audio, graphs, tables or any other non-textual data.**
 
 ### WHEN TO SET `is_relevant: true`:**
 ONLY set this if the sub-query targets specific clinical data found in `client_insights`, `sessions`, or `utterances`.
@@ -479,9 +509,7 @@ Context: current_session_number = 5, total_sessions_count = 5.
 User Input: "First, tell me a joke about Python to lighten the mood. Then, I want to dig deep into his 'failure' issues: scan all previous sessions for moments where he sounded like a failure, and also check if we explicitly tagged 'Failure' as a theme in those moments. compare that with his overall clinical profile and the summary of the very first session. Finally, remind me, what exactly is a 'Sentiment Score'?"
 {
   "sub_queries": [
-    // --------------------------------------------------------------------------------------
     // PART 1: IRRELEVANT (Chitchat Refusal)
-    // --------------------------------------------------------------------------------------
     {
       "original_text": "First, tell me a joke about Python to lighten the mood.",
       "is_relevant": false,
@@ -489,11 +517,8 @@ User Input: "First, tell me a joke about Python to lighten the mood. Then, I wan
       "info_it_provides": null,
       "search_criteria": null
     },
-
-    // --------------------------------------------------------------------------------------
     // PART 2A: DUAL-PERSPECTIVE SEARCH (Vector/Semantic Search)
     // Goal: Find "sounding like a failure" even if not tagged.
-    // --------------------------------------------------------------------------------------
     {
       "original_text": "scan all previous sessions for moments where he sounded like a failure",
       "is_relevant": true,
@@ -511,11 +536,8 @@ User Input: "First, tell me a joke about Python to lighten the mood. Then, I wan
         "limit": 5
       }
     },
-
-    // --------------------------------------------------------------------------------------
     // PART 2B: DUAL-PERSPECTIVE SEARCH (Exact Tag Search)
     // Goal: Find explicit "Failure" tags for the SAME concept.
-    // --------------------------------------------------------------------------------------
     {
       "original_text": "check if we explicitly tagged 'Failure' as a theme in those moments",
       "is_relevant": true,
@@ -535,10 +557,7 @@ User Input: "First, tell me a joke about Python to lighten the mood. Then, I wan
         "limit": null
       }
     },
-
-    // --------------------------------------------------------------------------------------
     // PART 3: GLOBAL CONTEXT (Client Profile)
-    // --------------------------------------------------------------------------------------
     {
       "original_text": "compare that with his overall clinical profile",
       "is_relevant": true,
@@ -546,7 +565,7 @@ User Input: "First, tell me a joke about Python to lighten the mood. Then, I wan
       "reason": null,
       "search_criteria": {
         "table_name": "client_insights",
-        "target_session_numbers": null, // Null = Global Scope
+        "target_session_numbers": null, // null only when querying for client_insights table
         "search_mode": "exact_filter",
         "query_to_embed": null,
         "columns_to_select": ["clinical_profile"],
@@ -556,10 +575,7 @@ User Input: "First, tell me a joke about Python to lighten the mood. Then, I wan
         "limit": null
       }
     },
-
-    // --------------------------------------------------------------------------------------
     // PART 4: SPECIFIC SESSION (Session 1 Summary)
-    // --------------------------------------------------------------------------------------
     {
       "original_text": "and the summary of the very first session",
       "is_relevant": true,
@@ -579,10 +595,7 @@ User Input: "First, tell me a joke about Python to lighten the mood. Then, I wan
         "limit": null
       }
     },
-
-    // --------------------------------------------------------------------------------------
     // PART 5: DEFINITION REQUEST (Direct Answer / No DB)
-    // --------------------------------------------------------------------------------------
     {
       "original_text": "Finally, remind me, what exactly is a 'Sentiment Score'?",
       "is_relevant": false,
@@ -592,9 +605,11 @@ User Input: "First, tell me a joke about Python to lighten the mood. Then, I wan
     }
   ]
 }
+### CRITICAL: **JSON SCHEMA INTEGRITY (NO MISSING KEYS)**
+You must output **EVERY** field defined in the JSON schema. Do not omit keys. If a field is unused, explicitly set it to `null`. The `table_name` field is **MANDATORY** whenever `is_relevant` is true.
 ### CRITICAL: If is_relevant is true  it means there must be some columns and table to search for and, reason is null, else it must be false.
 ### CRITICAL: If is_relevant is false you MUST provide a proper, valid and brief reason.
-### CRITICAL: When is_relevant is true "Info_it_provides" must be set to tell generator what info does following data provides. When is_relevant is false this field must be null.
+### CRITICAL: When is_relevant is true "info_it_provides" must be set to tell generator what info does following data provides. When is_relevant is false this field must be null.
 ### CRITICAL: Even multiple subqueries can be there for same original text if required when you have to fetch different things using different techniques, different table and columns.
 ### CRITICAL: For the subqueries that requires vector similarity search, you must have the 2 sub-queries one for vector similarity search and another for the theme search in clinical themes of utterances.
 ### CRITICAL: Output VALID JSON format (provided). No markdown blocks.
