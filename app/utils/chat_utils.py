@@ -12,7 +12,7 @@ from pydantic_core import ValidationError
 from app.core.supabase_client import get_supabase_client
 # Import your strict schema
 from app.schemas.chat_schemas import RouterOutput, SubQuery, SearchCriteria, TableName, SearchMode
-from app.utils.promt_templates import ROUTER_SYSTEM_PROMPT, CLINICAL_GENERATOR_SYSTEM_PROMPT
+from app.utils.promt_templates import GENERATOR_SYSTEM_PROMPT, ROUTER_SYSTEM_PROMPT
 from app.utils.embedding_utils import generate_query_embedding
 
 # Model Selection
@@ -217,9 +217,6 @@ async def fetch_client_context(client_id: str) -> Dict[str, Any]:
         logger.warning(f"[CONTEXT FETCH] Failed to fetch client insights: {e}")
         return {"profile": "Profile temporarily unavailable.", "emotions": {}}
 
-
-from app.utils.embedding_utils import generate_query_embedding
-
 async def _fetch_sessions(
     criteria: SearchCriteria, 
     client_id: str,
@@ -418,43 +415,32 @@ async def _fetch_utterances(
     3. Expands 'Context Window' (surrounding utterances) if requested.
     4. Enriches results with session_number.
     """
-    supabase = get_supabase_client()
     
     # --- STEP 1: RESOLVE SESSION NUMBERS TO UUIDS ---
-    # We need this map because 'utterances' table only has session_id (UUID),
-    # but the user asks for session_number (Int).
-    
-    # We fetch ALL sessions for this client to build a complete map.
-    # This is efficient (usually < 100 rows) and prevents missing IDs.
     session_query = supabase.table("sessions").select("id, session_number").eq("client_id", client_id)
     
-    # Optimization: If target numbers are specific, only fetch those.
     if criteria.target_session_numbers:
         session_query = session_query.in_("session_number", criteria.target_session_numbers)
     
     session_res = session_query.execute()
     
     if not session_res.data:
-         # If specific sessions were requested but don't exist, return empty now.
          if criteria.target_session_numbers:
              return [{
                  "status": "empty",
                  "message": f"Sessions {criteria.target_session_numbers} not found.",
                  "system_instruction": "The user asked for utterances from specific sessions that do not exist."
              }]
+         return []
     
-    # Map: UUID -> Int (for results) and List[UUID] (for filtering)
+    # Map: UUID -> Int
     id_to_num_map = {item['id']: item['session_number'] for item in session_res.data}
     valid_session_ids = list(id_to_num_map.keys())
 
     # --- STEP 2: FIND "ANCHOR" UTTERANCES ---
-    # These are the specific hits (e.g., "I feel sad" or Tag="Anger")
-    
     anchors = []
     
-    # Internal helper to clean results & inject session number
     def _enrich(row):
-        # Inject the session number back into the row
         if row.get('session_id') in id_to_num_map:
             row['session_number'] = id_to_num_map[row['session_id']]
         return row
@@ -462,70 +448,106 @@ async def _fetch_utterances(
     try:
         # MODE A: VECTOR SIMILARITY (RPC)
         if criteria.search_mode == SearchMode.VECTOR_SIMILARITY:
-            # 1. Validation: We MUST have text to embed
             if not criteria.query_to_embed:
-                return [{
-                    "status": "error", 
-                    "message": "Vector search requested but 'query_to_embed' is missing."
-                }]
+                return [{"status": "error", "message": "Vector search requested but 'query_to_embed' is missing."}]
 
-            # 2. Generate Embedding LOCALLY
-            # This ensures we embed the specific sub-query concept, not the whole user prompt
             logger.info(f"[RETRIEVAL] Generating embedding for utterance search: '{criteria.query_to_embed}'")
             specific_embedding = await generate_query_embedding(criteria.query_to_embed)
 
             rpc_params = {
                 "query_embedding": specific_embedding,
-                "match_threshold": 0.72, # Slightly higher for utterances to avoid noise
+                "match_threshold": 0.4, 
                 "match_count": criteria.limit or 5,
                 "filter_client_id": client_id,
                 "filter_session_ids": valid_session_ids
             }
-            
             res = supabase.rpc("match_utterances", rpc_params).execute()
             anchors = res.data
 
-        # MODE B: EXACT SQL FILTER
+        # MODE B: SESSION-WISE BATCH PROCESSING
         else:
-            # Base Selection
-            # We ALWAYS fetch id, session_id, sequence_number for logic, even if not requested
+            # 1. Prepare Columns
             sel = "id,session_id,speaker,utterance,sequence_number,clinical_themes,start_seconds"
-            # Add extras if requested
             if criteria.columns_to_select:
-                extras = [c for c in criteria.columns_to_select if c not in sel]
+                extras = [c for c in criteria.columns_to_select if c not in sel and c != "session_number"]
                 if extras: sel += "," + ",".join(extras)
             
-            query = supabase.table("utterances").select(sel)\
-                .in_("session_id", valid_session_ids) # Apply Session Scope
-            
-            # Apply Filters
-            for f in criteria.filters:
-                if f.column == "clinical_themes":
-                    # For JSONB Array: contains checks if ["Anger"] is in ["Anger", "Sad"]
-                    if f.operator == "contains": query = query.contains("clinical_themes", f.value)
-                elif f.column == "utterance":
-                    if f.operator == "ilike": query = query.ilike("utterance", f"%{f.value}%")
-                elif f.column == "speaker":
-                    if f.operator == "eq": query = query.eq("speaker", f.value)
-                elif f.column == "sequence_number":
-                     val = int(f.value) # Ensure int type
-                     if f.operator == "eq": query = query.eq("sequence_number", val)
-                     elif f.operator == "neq": query = query.neq("sequence_number", val)
-                     elif f.operator == "gt": query = query.gt("sequence_number", val)
-                     elif f.operator == "lt": query = query.lt("sequence_number", val)
-                     elif f.operator == "gte": query = query.gte("sequence_number", val)
-                     elif f.operator == "lte": query = query.lte("sequence_number", val)
+            all_filtered_anchors = []
 
-            # Apply Ordering (Only for SQL mode)
-            if criteria.order_by:
+            # 2. Iterate Session by Session (Batch Processing)
+            for sess_id in valid_session_ids:
+                
+                # A. Fetch Raw Data for SINGLE Session (Fast & Safe)
+                query = supabase.table("utterances").select(sel).eq("session_id", sess_id)
+                res = query.execute()
+                raw_session_rows = res.data or []
+
+                # B. Apply Python Filters immediately (in Memory)
+                if raw_session_rows and criteria.filters:
+                    for row in raw_session_rows:
+                        match_all = True
+                        
+                        for f in criteria.filters:
+                            col = str(f.column).lower()
+                            val = f.value
+                            
+                            if col == "session_number": continue
+
+                            # --- Text Search ---
+                            if col == "utterance":
+                                search_val = str(val).lower().replace("%", "")
+                                if search_val not in str(row.get('utterance', "")).lower():
+                                    match_all = False; break
+                            
+                            # --- Speaker ---
+                            elif col == "speaker":
+                                if str(row.get('speaker', "")).lower() != str(val).lower():
+                                    match_all = False; break
+
+                            # --- Clinical Themes (JSON) ---
+                            elif col == "clinical_themes":
+                                row_themes = row.get('clinical_themes') or []
+                                if isinstance(row_themes, str): row_themes = [row_themes]
+                                
+                                search_vals = val if isinstance(val, list) else [val]
+                                hit = False
+                                for s_val in search_vals:
+                                    if any(str(s_val).lower() in str(rt).lower() for rt in row_themes):
+                                        hit = True; break
+                                if not hit: match_all = False; break
+
+                            # --- Sequence Number ---
+                            elif col == "sequence_number":
+                                r_seq = int(row.get('sequence_number', 0))
+                                t_val = int(val)
+                                if f.operator == "eq" and r_seq != t_val: match_all = False
+                                elif f.operator == "gt" and not (r_seq > t_val): match_all = False
+                                elif f.operator == "lt" and not (r_seq < t_val): match_all = False
+                                
+                                if not match_all: break
+
+                        # If row survived all filters, add to main list
+                        if match_all:
+                            all_filtered_anchors.append(row)
+                
+                # C. Explicit "Memory Clean": 
+                # In the next loop iteration, 'raw_session_rows' is overwritten, 
+                # and Python frees the memory automatically.
+
+            anchors = all_filtered_anchors
+
+            # 3. Ordering (Global Sort after gathering all batches)
+            if criteria.order_by and criteria.order_by.column != "session_number":
+                col = criteria.order_by.column
                 is_desc = (criteria.order_by.direction == "desc")
-                query = query.order(criteria.order_by.column, desc=is_desc)
+                anchors.sort(
+                    key=lambda x: x.get(col) if x.get(col) is not None else "", 
+                    reverse=is_desc
+                )
 
+            # 4. Limit (Global Limit)
             if criteria.limit: 
-                query = query.limit(criteria.limit)
-            
-            res = query.execute()
-            anchors = res.data
+                anchors = anchors[:criteria.limit]
 
     except Exception as e:
         logger.error(f"[RETRIEVAL] Error finding anchors: {e}")
@@ -535,46 +557,30 @@ async def _fetch_utterances(
         return [{
             "status": "empty", 
             "message": "No matching utterances found.",
-            "system_instruction": "The specific quote, keyword, or theme requested was not found in the transcripts."
+            "system_instruction": "The specific quote, keyword, or theme requested was not found."
         }]
 
-    # Enrich Anchors immediately
     anchors = [_enrich(a) for a in anchors]
 
     # --- STEP 3: CONTEXT WINDOW EXPANSION ---
-    # If the user asks for "What happened AFTER...", we fetch neighbors.
-    
     if not criteria.context_window:
-        # No window requested? Just return the anchors.
         return anchors
 
-    # Logic: Collect all (session_id, sequence_range) we need to fetch
-    # We loop through anchors to build context queries.
-    
-    # Context Window Logic
     window = criteria.context_window
     final_results = []
-    
-    # We use a set of IDs to deduplicate (if windows overlap)
     seen_ids = {a['id'] for a in anchors}
-    final_results.extend(anchors) # Start with anchors
+    final_results.extend(anchors) 
 
     logger.info(f"[RETRIEVAL] Expanding Context Window: {window.direction} {window.depth} turns")
-
-    # [NEW] Initialize Group Counter
+    
     group_counter = 1
 
     for anchor in anchors:
         sess_id = anchor['session_id']
         seq = anchor['sequence_number']
-        
-        # [NEW] Stamp the Anchor with the current group ID
-        # Since 'anchor' is a reference to the dict inside 'final_results', this updates it there too.
-        anchor['match_group_id'] = group_counter
+        anchor['match_group_id'] = group_counter # Stamp Anchor
 
-        # Calculate Target Sequence Range
         start_seq, end_seq = 0, 0
-        
         if window.direction == "after":
             start_seq = seq + 1
             end_seq = seq + window.depth
@@ -582,13 +588,10 @@ async def _fetch_utterances(
             start_seq = max(1, seq - window.depth)
             end_seq = seq - 1
         
-        # Guard against invalid ranges (e.g. searching before sequence 1)
         if start_seq > end_seq: 
             group_counter += 1
             continue
 
-        # Build Query for Window
-        # We select specific columns for context too
         ctx_query = supabase.table("utterances").select("id,session_id,speaker,utterance,sequence_number,clinical_themes,start_seconds")\
             .eq("session_id", sess_id)\
             .gte("sequence_number", start_seq)\
@@ -597,27 +600,19 @@ async def _fetch_utterances(
         if window.target_speaker:
             ctx_query = ctx_query.eq("speaker", window.target_speaker)
         
-        # Sort by sequence to keep conversation order
         ctx_query = ctx_query.order("sequence_number", desc=False)
-
-        # Execute
         ctx_res = ctx_query.execute()
         
         if ctx_res.data:
             for item in ctx_res.data:
                 if item['id'] not in seen_ids:
-                    # [NEW] Stamp the Context item with the SAME group ID
-                    item['match_group_id'] = group_counter
-                    
+                    item['match_group_id'] = group_counter # Stamp Context
                     final_results.append(_enrich(item))
                     seen_ids.add(item['id'])
         
-        # [NEW] Increment for the next anchor group
         group_counter += 1
 
-    # Re-sort final results by session_number then sequence_number for readability
     final_results.sort(key=lambda x: (x.get('session_number', 0), x.get('sequence_number', 0)))
-    
     return final_results
 
 async def _fetch_client_insights(criteria: SearchCriteria, client_id: str) -> List[Any]:
@@ -650,72 +645,6 @@ async def _fetch_client_insights(criteria: SearchCriteria, client_id: str) -> Li
         for f in criteria.filters:
             if f.column not in VALID_COLUMNS:
                 continue  # Skip unknown columns
-
-            col_type = COLUMN_TYPES[f.column]
-
-            # # --- CASE A: INTEGER (session_count) ---
-            # if col_type == "int":
-            #     # 1. Block invalid operators for numbers
-            #     if f.operator in ["like", "ilike", "contains"]:
-            #         logger.warning(f"[RETRIEVAL] Invalid operator '{f.operator}' for int column '{f.column}'. Skipping.")
-            #         continue
-                
-            #     # 2. Validate & Sanitize Value
-            #     try:
-            #         val = int(f.value)
-            #         # Enforce non-negative for counts
-            #         if f.column == "session_count" and val < 0:
-            #             val = 0
-            #     except (ValueError, TypeError):
-            #         logger.warning(f"[RETRIEVAL] Non-integer value '{f.value}' provided for '{f.column}'. Skipping.")
-            #         continue
-
-            #     # 3. Apply Query
-            #     if f.operator == "eq": query = query.eq(f.column, val)
-            #     elif f.operator == "neq": query = query.neq(f.column, val)
-            #     elif f.operator == "gt": query = query.gt(f.column, val)
-            #     elif f.operator == "lt": query = query.lt(f.column, val)
-            #     elif f.operator == "gte": query = query.gte(f.column, val)
-            #     elif f.operator == "lte": query = query.lte(f.column, val)
-
-            # # --- CASE B: JSONB (emotion_map) ---
-            # elif col_type == "jsonb":
-            #     # 1. Only allow 'contains' (Supabase doesn't support like/ilike on JSONB directly)
-            #     if f.operator != "contains":
-            #         continue
-
-            #     # 2. Ensure Value is {Key: Value} Pair
-            #     # "Impute universal value" logic: If user sends just "Joy", assume {"Joy": 1}
-            #     final_val = None
-                
-            #     if isinstance(f.value, dict):
-            #         final_val = f.value
-            #     elif isinstance(f.value, str):
-            #         # Fallback: Create dict with dummy value (e.g., 1) to satisfy JSON syntax
-            #         final_val = {f.value: ...}
-            #     elif isinstance(f.value, int):
-            #         final_val = {...: f.value}
-            #     else:
-            #         continue
-
-            #     query = query.contains(f.column, final_val)
-
-            # # --- CASE C: TEXT (clinical_profile) ---
-            # elif col_type == "text":
-            #     val = str(f.value)
-            #     if f.operator == "eq": query = query.eq(f.column, val)
-            #     elif f.operator == "neq": query = query.neq(f.column, val)
-            #     elif f.operator == "like": query = query.like(f.column, val)
-            #     elif f.operator == "ilike": query = query.ilike(f.column, val)
-            #     # Ignore gt/lt for text
-
-            # # --- CASE D: TIMESTAMP (updated_at) ---
-            # elif col_type == "timestamp":
-            #     val = str(f.value) # Supabase handles ISO string parsing
-            #     if f.operator == "gt": query = query.gt(f.column, val)
-            #     elif f.operator == "lt": query = query.lt(f.column, val)
-            #     elif f.operator == "gte": query = query.gte(f.column, val)
-            #     elif f.operator == "lte": query = query.lte(f.column, val)
 
         # 4. Execute
         result = query.execute()
@@ -833,10 +762,97 @@ async def execute_retrieval_pipeline(router_plan: RouterOutput, client_id: str) 
 # ==============================================================================
 # GENERATOR LAYER
 # ==============================================================================
-async def generate_clinical_answer(retrieved_context: list, user_query: str) -> str:
+
+async def generate_clinical_answer(retrieved_context: List[Dict[str, Any]], user_query: str) -> str:
     """
-    DUMMY FUNCTION: The Generator.
-    Will eventually take the 'retrieved_context' and LLM to synthesize the final answer.
+    The Generator.
+    Synthesizes the final professional answer for the therapist using the retrieved context.
     """
-    pass
-    return "This is a dummy response generated from the retrieval pipeline."
+    
+    # --- 1. CONTEXT FORMATTING ---
+    # Convert the raw JSON list into a clean, readable text block for the LLM.
+    formatted_context = ""
+    
+    for idx, item in enumerate(retrieved_context, 1):
+        original_text = item.get("original_text", "Unknown Query")
+        is_relevant = item.get("is_relevant", False)
+        reason = item.get("reason", "N/A")
+        data = item.get("data", [])
+
+        # Header for this sub-query
+        formatted_context += f"\n=== SUB-QUERY {idx}: \"{original_text}\" ===\n"
+        
+        # CASE A: IRRELEVANT / REFUSAL
+        if not is_relevant:
+            formatted_context += f"Status: Skipped (Irrelevant)\nReason: {reason}\n"
+            continue
+
+        # CASE B: RELEVANT BUT EMPTY
+        if not data:
+            formatted_context += "Status: Relevant, but NO DATA found in records.\n"
+            continue
+
+        # CASE C: HAS DATA (Format based on Table Type)
+        if isinstance(data, list):
+            formatted_context += f"Status: {len(data)} items found.\nEvidence:\n"
+            
+            for row in data:
+                # 1. UTTERANCES (Transcript Lines)
+                if 'utterance' in row:
+                    sess = row.get('session_number', '?')
+                    seq = row.get('sequence_number', '?')
+                    speaker = row.get('speaker', 'Unknown')
+                    text = row.get('utterance', '')
+                    # Format: [Sess 1 | Seq 45] Client: "I feel sad."
+                    formatted_context += f" - [Sess {sess} | Seq {seq}] {speaker}: \"{text}\"\n"
+                
+                # 2. SESSIONS (Summaries & Metadata)
+                elif 'summary' in row:
+                    sess = row.get('session_number', '?')
+                    summary = row.get('summary', '')
+                    theme = row.get('theme', 'N/A')
+                    formatted_context += f" - [Sess {sess}] Theme: {theme} | Summary: {summary}\n"
+                
+                # 3. CLIENT INSIGHTS (Profile)
+                elif 'clinical_profile' in row:
+                    profile = row.get('clinical_profile', '')
+                    formatted_context += f" - [Client Profile] {profile}\n"
+                    
+                # 4. FALLBACK (Generic)
+                else:
+                    formatted_context += f" - {str(row)}\n"
+        else:
+            # Fallback for unexpected data structures (dict or string)
+            formatted_context += f"Raw Data: {str(data)}\n"
+
+    # --- 2. MESSAGE CONSTRUCTION ---
+    
+    # The variable part: Query + Data
+    final_user_message = (
+        f"### THERAPIST QUERY\n"
+        f"{user_query}\n\n"
+        f"### RETRIEVED CONTEXT\n"
+        f"{formatted_context}\n\n"
+        f"### YOUR RESPONSE\n"
+    )
+
+    messages = [
+        # The Static Rules (Identity, Prohibitions, Style)
+        {"role": "system", "content": GENERATOR_SYSTEM_PROMPT},
+        # The Dynamic Content
+        {"role": "user", "content": final_user_message}
+    ]
+
+    # --- 3. EXECUTE LLM CALL ---
+    try:
+        response = await _call_llm_api(
+            messages=messages,
+            model=GENERATOR_MODEL,
+            temperature=0.0  # Zero temp is CRITICAL for factual adherence
+        )
+        return response
+        
+    except Exception as e:
+        logger.error(f"[GENERATOR] Synthesis failed: {e}")
+        # Return a safe fallback message so the UI doesn't crash
+        return "I encountered a system error while synthesizing the final answer."

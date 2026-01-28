@@ -11,7 +11,7 @@ from app.services.chat_service import chat_service
 
 router = APIRouter()
 
-@router.post("/chat", response_model=List[Any]) # Updated to return the Plan
+@router.post("/chat", response_model=str) # Updated to return the Plan
 async def chat_endpoint(
     payload: ChatRequest,
     therapist_id: str = Depends(authenticate)

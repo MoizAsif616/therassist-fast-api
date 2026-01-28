@@ -391,65 +391,6 @@ async def identify_speaker_roles(utterances: list) -> dict:
             
             await asyncio.sleep(1)
 
-# async def impute_speaker_labels(cleaned_data: dict, role_map: dict) -> dict:
-#     """
-#     Replaces generic speaker labels (e.g., 'A', 'B') in the cleaned transcript
-#     with specific roles (e.g., 'Therapist', 'Client') using the provided map.
-#     """
-#     try:
-#         # 1. Validation: Ensure inputs are correct types
-#         if not isinstance(cleaned_data, dict) or "utterances" not in cleaned_data:
-#             logger.error(f"[IMPUTE] Invalid cleaned_data format. Expected dict with 'utterances' key.")
-#             raise HTTPException(
-#                 status_code=422, 
-#                 detail="Invalid input: 'cleaned_data' must be a dictionary containing an 'utterances' list."
-#             )
-        
-#         if not isinstance(role_map, dict) or not role_map:
-#             logger.warning("[IMPUTE] Role map is empty or invalid. Skipping imputation.")
-#             return cleaned_data
-
-#         logger.info(f"[IMPUTE] Applying role map: {role_map}")
-
-#         # 2. Imputation Logic
-#         # We process a Deep Copy to avoid mutating the original object if something fails halfway
-#         updated_utterances = []
-        
-#         for i, utterance in enumerate(cleaned_data["utterances"]):
-#             # Check for malformed utterance objects
-#             if not isinstance(utterance, dict) or "speaker" not in utterance:
-#                 logger.warning(f"[IMPUTE] Skipping malformed utterance at index {i}")
-#                 updated_utterances.append(utterance)
-#                 continue
-            
-#             original_speaker = utterance["speaker"]
-            
-#             # Replace if the speaker exists in our map, otherwise keep original
-#             new_speaker = role_map.get(original_speaker, original_speaker)
-            
-#             # Create new utterance object with updated speaker
-#             new_utterance = utterance.copy()
-#             new_utterance["speaker"] = new_speaker
-#             updated_utterances.append(new_utterance)
-
-#         # 3. Construct Result
-#         result = cleaned_data.copy()
-#         result["utterances"] = updated_utterances
-        
-#         logger.success(f"[IMPUTE] Successfully updated {len(updated_utterances)} utterances.")
-#         return result
-
-#     except HTTPException as he:
-#         # Re-raise HTTP exceptions so they pass through to the client
-#         raise he
-#     except Exception as e:
-#         # Catch generic python errors and convert to 500
-#         logger.error(f"[IMPUTE] Critical Failure: {str(e)}")
-#         raise HTTPException(
-#             status_code=500, 
-#             detail=f"Internal Server Error during speaker imputation: {str(e)}"
-#         )
-
 async def _parse_timestamp_to_seconds(timestamp_str: str) -> float:
     """Converts 'MM:SS' or 'HH:MM:SS' to seconds (float)."""
     if not timestamp_str: return 0.0
