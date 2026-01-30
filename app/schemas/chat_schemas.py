@@ -124,8 +124,6 @@ class RouterOutput(BaseModel):
 class ChatRequest(BaseModel):
     query: str = Field(..., min_length=1, description="The user's question.")
     client_id: str = Field(..., description="The ID of the client being discussed.")
-    # session_id is OPTIONAL. If None, it implies 'Global Context' (All sessions).
-    session_id: Optional[str] = Field(None, description="Specific session context. Null for global.")
 
 class ChatResponse(BaseModel):
     # We will use this later when the Generator is ready.

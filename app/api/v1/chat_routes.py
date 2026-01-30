@@ -11,8 +11,9 @@ from app.services.chat_service import chat_service
 
 router = APIRouter()
 
-@router.post("/chat", response_model=str) # Updated to return the Plan
+@router.post("/sessions/{session_id}/chat", response_model=str) # Updated to return the Plan
 async def chat_endpoint(
+    session_id: str,
     payload: ChatRequest,
     therapist_id: str = Depends(authenticate)
 ):
@@ -24,11 +25,11 @@ async def chat_endpoint(
             detail="You do not have permission to access this client's data."
         )
 
-    if payload.session_id:
+    if session_id:
         try:
-            check_session_ownership(payload.session_id, payload.client_id, therapist_id)
+            check_session_ownership(session_id, payload.client_id, therapist_id)
         except HTTPException:
-            logger.warning(f"[CHAT ROUTE] Session Access denied for {payload.session_id}")
+            logger.warning(f"[CHAT ROUTE] Session Access denied for {session_id}")
             raise HTTPException(
                 status_code=400, 
                 detail="The specified session does not belong to this client."
@@ -46,7 +47,7 @@ async def chat_endpoint(
         query=payload.query,
         client_id=payload.client_id,
         therapist_id=therapist_id,
-        session_id=payload.session_id
+        session_id=session_id
     )
 
     return result

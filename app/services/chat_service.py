@@ -3,6 +3,7 @@ from loguru import logger
 from fastapi import HTTPException
 
 # Logic Imports
+from app.core.supabase_client import db
 from app.utils.chat_utils import (
     execute_retrieval_pipeline,
     generate_clinical_answer,
@@ -59,12 +60,31 @@ async def chat_service(
         
         try:
             logger.info(f"Generating final answer using retrieved context.")
-            final_answer = await generate_clinical_answer(retrieved_context, query)
+            generation_result = await generate_clinical_answer(retrieved_context, query)
+            answer = generation_result["answer"]
+            summary = generation_result["summary"]
         except Exception as e:
             logger.error(f"[CHAT SERVICE] Generator Failure: {e}")
             raise HTTPException(status_code=500, detail="Failed to generate final answer.")
         
-        return final_answer
+        logger.debug(f"[CHAT SERVICE] Final Answer: {answer}")
+        logger.debug(f"[CHAT SERVICE] Summary: {summary}")
+
+        try:
+          db()("chat_logs").insert({
+              "session_id": session_id,
+              "query": query,
+              "router_plan": router_plan.dict(),
+              "answer": answer,
+              "summarized_answer": summary
+          }).execute()
+          
+          logger.success(f"Chat logged for Session {session_id}")
+        except Exception as e:
+          logger.error(f"Failed to log chat: {e}")
+          raise HTTPException(status_code=500, detail="Failed to log chat.")
+
+        return answer
 
     except HTTPException as he:
         # Pass through specific HTTP errors (like 502 Bad Gateway from Router)

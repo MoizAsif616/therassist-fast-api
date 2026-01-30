@@ -27,3 +27,4 @@ numpy
 pyjwt
 minio
 assemblyai
+uuid
