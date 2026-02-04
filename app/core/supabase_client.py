@@ -1,10 +1,17 @@
-# app/core/supabase_client.py
 from typing import Any
 import os
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
 load_dotenv()  # loads .env in project root
+
+# --- CRITICAL FIX: Unset System Proxies ---
+# This forces the Supabase client to ignore broken Windows/VPN proxies
+# and connect directly to the internet.
+os.environ.pop("HTTP_PROXY", None)
+os.environ.pop("HTTPS_PROXY", None)
+os.environ.pop("http_proxy", None)
+os.environ.pop("https_proxy", None)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")

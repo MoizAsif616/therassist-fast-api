@@ -1,2 +1,25 @@
+# --- Python Bytecode (The files you want to ignore) ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Virtual Environments ---
 venv/
+.venv/
+env/
+
+# --- Environment Variables (CRITICAL: Never commit these) ---
 .env
+.env.local
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Operating System Files ---
+.DS_Store
+Thumbs.db
+
+# --- IDE Settings (Optional but recommended) ---
+.vscode/
+.idea/

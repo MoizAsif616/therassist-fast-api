@@ -1,35 +1,41 @@
 # app/services/user_service.py
+from asyncio.log import logger
 from postgrest.exceptions import APIError
 from app.core.supabase_client import db
 from fastapi import HTTPException, status
+import uuid
 
 def client_exists(client_id: str, therapist_id: str) -> bool:
-    """
-    Verifies that a client exists and belongs to the authenticated therapist.
-    Raises 404 if not found (security best practice: don't reveal clients of others).
-    """
+    # --- 1. VALIDATE UUID FORMAT (Fast Fail) ---
     try:
-        # 1. Query Clients table
-        # We check both ID and therapist_id to prevent unauthorized access (IDOR)
+        uuid.UUID(client_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Client ID format. Must be a valid UUID."
+        )
+    try:
         response = db()("clients")\
             .select("id")\
             .eq("id", client_id)\
             .execute()
 
-        # 2. Check if row exists
+        # --- 3. CHECK EXISTENCE ---
         if not response.data:
+            # Valid UUID format, but no matching row found
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="[USER SERVICE] Client not found."
+                detail="Client not found."
             )
 
         return True
 
     except APIError as e:
-        print(f"[DB ERROR] {e}")
+        # Log the actual DB error for debugging (don't show to user)
+        logger.error(f"[DB ERROR] client_exists failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="[USER SERVICE] Database check failed."
+            detail="Internal database error while verifying client."
         )
 
 
