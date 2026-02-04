@@ -103,6 +103,21 @@ async def _call_llm_api(
             logger.error(f"[LLM API] Unexpected Error: {e}")
             raise HTTPException(status_code=500, detail="Internal Server Error during AI processing.")
 
+async def format_history_for_llm(history_items: List[Dict]) -> str:
+    """
+    Converts raw history list into a clean string block for LLM prompts.
+    """
+    if not history_items:
+        return "No previous context."
+    
+    lines = []
+    for turn in history_items:
+        # Clean newlines to keep the prompt compact
+        q = turn.get("query", "").replace("\n", " ")
+        a = turn.get("summarized_answer", "").replace("\n", " ")
+        lines.append(f"User(Therapist): {q}\nTherassist assistant(you): {a}")
+    
+    return "\n---\n".join(lines)
 
 # ==============================================================================
 # ROUTER LAYER
@@ -110,7 +125,7 @@ async def _call_llm_api(
 
 async def route_query_intent(
     query: str, 
-    chat_history: List[dict], 
+    chat_history: str, 
     current_session_number: int, 
     total_sessions: int, 
     updated_at: str, 
@@ -122,8 +137,6 @@ async def route_query_intent(
     STRICT MODE: Raises exception on failure.
     """
     logger.info(f"[ROUTER] Analyzing query with model: {ROUTER_MODEL}")
-
-    # formatted_emotions = json.dumps(emotions, indent=2) if isinstance(emotions, (dict, list)) else str(emotions)
 
     context_instruction = f"""
     Carefully analyze the query and divide into questions being asked. Questions can be separated by commas, "and", "then", "after that" or even implicit intent etc.
@@ -143,8 +156,10 @@ async def route_query_intent(
 
     user_message_content = (
         f"{context_instruction}\n\n"
-        # f"Chat History:\n{history_text}\n\n" 
-        f"Current Query: {query}"
+        f"### CONVERSATION HISTORY (Last 5 Turns):\n"
+        f"{chat_history}\n\n" 
+        f"### CURRENT QUERY:\n"
+        f"{query}"
     )
     
     messages = [
@@ -193,8 +208,25 @@ async def route_query_intent(
         raise HTTPException(status_code=500, detail="Internal Router processing error.")
 
 # ==============================================================================
-# RETRIEVAL LAYER (Database)
+# RETRIEVAL (Database)
 # ==============================================================================
+
+async def fetch_recent_history(session_id: str, limit: int = 5) -> List[Dict]:
+    try:
+        # Synchronous call (matches your current pattern)
+        response = supabase.table("chat_logs")\
+            .select("query, summarized_answer")\
+            .eq("session_id", session_id)\
+            .order("created_at", desc=True)\
+            .limit(limit)\
+            .execute()
+        
+        # Reverse to chronological order (Oldest -> Newest) because DB gives Newest First
+        return response.data[::-1] if response.data else []
+
+    except Exception as e:
+        logger.error(f"[HISTORY FETCH] Failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch chat history.")
 
 async def fetch_client_context(client_id: str) -> Dict[str, Any]:
     try:
@@ -763,14 +795,12 @@ async def execute_retrieval_pipeline(router_plan: RouterOutput, client_id: str) 
 # GENERATOR LAYER
 # ==============================================================================
 
-async def generate_clinical_answer(retrieved_context: List[Dict[str, Any]], user_query: str) -> str:
+async def generate_clinical_answer(retrieved_context: List[Dict[str, Any]], user_query: str, chat_history: str) -> str:
     """
     The Generator.
     Synthesizes the final professional answer for the therapist using the retrieved context.
     """
-    
-    # --- 1. CONTEXT FORMATTING ---
-    # Convert the raw JSON list into a clean, readable text block for the LLM.
+
     formatted_context = ""
     
     for idx, item in enumerate(retrieved_context, 1):
@@ -829,6 +859,8 @@ async def generate_clinical_answer(retrieved_context: List[Dict[str, Any]], user
     
     # The variable part: Query + Data
     final_user_message = (
+        f"### CONVERSATION HISTORY (Last 5 Turns)\n"
+        f"{chat_history}\n\n"   # <--- DIRECT INJECTION
         f"### THERAPIST QUERY\n"
         f"{user_query}\n\n"
         f"### RETRIEVED CONTEXT\n"

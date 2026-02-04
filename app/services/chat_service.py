@@ -6,6 +6,8 @@ from fastapi import HTTPException
 from app.core.supabase_client import db
 from app.utils.chat_utils import (
     execute_retrieval_pipeline,
+    fetch_recent_history,
+    format_history_for_llm,
     generate_clinical_answer,
     route_query_intent, 
     fetch_client_context
@@ -19,26 +21,28 @@ async def chat_service(
     therapist_id: str,
     session_id: str | None = None
 ):
-    """
-    RAG Pipeline (Stage 1: Router Only)
-    Analyzes the user's query and returns the execution plan.
-    """
     try:
         logger.info(f"[CHAT SERVICE] Processing query for Client {client_id}")
-
         current_session_number = None
         client_context = await fetch_client_context(client_id)
         
         if session_id:
             try:
-                current_session_number = await get_session_number(session_id)
+                current_session_number_task = get_session_number(session_id)
+                recent_history_task = fetch_recent_history(session_id)
+                current_session_number, recent_history = await asyncio.gather(
+                    current_session_number_task, recent_history_task
+                )
+
+                history_str = await format_history_for_llm(recent_history)
+                print (history_str)
             except Exception as e:
                 logger.warning(f"[CHAT SERVICE] Invalid Session ID provided: {e}")
-                raise HTTPException(status_code=400, detail="Invalid Session ID provided.")
+                raise HTTPException(status_code=400, detail="Invalid Session ID provided. Can't fetch session data")
         try:
             router_plan = await route_query_intent(
                 query=query, 
-                chat_history=[], 
+                chat_history=history_str, 
                 current_session_number=current_session_number,
                 total_sessions=client_context.get("session_count", 0),
                 updated_at=str(client_context.get("updated_at", "")),
@@ -60,7 +64,7 @@ async def chat_service(
         
         try:
             logger.info(f"Generating final answer using retrieved context.")
-            generation_result = await generate_clinical_answer(retrieved_context, query)
+            generation_result = await generate_clinical_answer(retrieved_context, query, history_str)
             answer = generation_result["answer"]
             summary = generation_result["summary"]
         except Exception as e:

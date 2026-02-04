@@ -12,7 +12,7 @@ from app.services.chat_service import chat_service
 router = APIRouter()
 
 @router.post("/sessions/{session_id}/chat", response_model=str) # Updated to return the Plan
-async def chat_endpoint(
+async def chat_route(
     session_id: str,
     payload: ChatRequest,
     therapist_id: str = Depends(authenticate)
