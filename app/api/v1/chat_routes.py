@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from loguru import logger
 from typing import List, Any
 from app.schemas.chat_schemas import ChatRequest, RouterOutput 
@@ -15,7 +15,8 @@ router = APIRouter()
 async def chat_route(
     session_id: str,
     payload: ChatRequest,
-    therapist_id: str = Depends(authenticate)
+    background_tasks: BackgroundTasks,
+    therapist_id: str = Depends(authenticate),
 ):
     
     if not client_exists(payload.client_id, therapist_id):
@@ -47,7 +48,8 @@ async def chat_route(
         query=payload.query,
         client_id=payload.client_id,
         therapist_id=therapist_id,
-        session_id=session_id
+        session_id=session_id,
+        background_tasks=background_tasks
     )
 
     return result

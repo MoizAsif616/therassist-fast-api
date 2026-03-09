@@ -36,30 +36,27 @@ def get_client_emotion_map(client_id: str) -> dict:
         raise HTTPException(500, detail="Could not fetch client insights.")
 
 def compute_emotion_maps(utterances: list[dict], existing_client_map: dict) -> tuple[dict, dict]:
-    """
-    Computes:
-    1. Session Map: Count of emotions in THIS session.
-    2. Client Map: Merged count of (Old Client Map + Session Map).
-    """
 
-    logger.info(f"[ANNOTATION UTILS] Computing emotion maps.")
-    session_counter = Counter()
+    try:
+      logger.info(f"[ANNOTATION UTILS] Computing emotion maps.")
+      session_counter = Counter()
+      for u in utterances:
+          if u.speaker == "Client":
+              themes = u.get("clinical_themes", {})
+              if themes:
+                  for theme_name in themes.keys():
+                      session_counter[theme_name] += 1
+      
+      session_map = dict(session_counter)
 
-    # 1. Tally this session
-    for u in utterances:
-        themes = u.get("clinical_themes", {})
-        if themes:
-            # 'themes' is a dict { "Anxiety": 0.85, ... }
-            # We count the KEYS (presence of emotion), not the scores
-            for theme_name in themes.keys():
-                session_counter[theme_name] += 1
-    
-    session_map = dict(session_counter)
+      # 2. Merge with Client History
+      client_counter = Counter(existing_client_map)
+      client_counter.update(session_counter)
+      
+      client_map = dict(client_counter)
+      logger.success(f"[ANNOTATION UTILS] Computed emotion maps.")
+      return session_map, client_map
 
-    # 2. Merge with Client History
-    client_counter = Counter(existing_client_map)
-    client_counter.update(session_counter)
-    
-    client_map = dict(client_counter)
-    logger.success(f"[ANNOTATION UTILS] Computed emotion maps.")
-    return session_map, client_map
+    except Exception as e:
+        logger.error(f"[ANNOTATION UTILS] Failed to compute emotion maps: {e}")
+        raise HTTPException(500, detail="Could not compute emotion maps.")

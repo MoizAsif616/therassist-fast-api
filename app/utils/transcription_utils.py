@@ -13,13 +13,8 @@ MODEL1_NAME = os.getenv("MODEL1_NAME")
 MODEL2_NAME = os.getenv("MODEL2_NAME")
 MODEL3_NAME = os.getenv("MODEL3_NAME")
 MODEL_KEY = os.getenv("MODEL_API_KEY")
-
-
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", 1))
 
-# --------------------------------------------------------------
-# 1. SUMMARY GENERATION
-# --------------------------------------------------------------
 async def generate_summary(session_number: int, text: str) -> str:
     if not MODEL_KEY:
         raise HTTPException(500, detail="Server misconfiguration: MODEL1_API_KEY missing.")
@@ -82,10 +77,6 @@ async def generate_summary(session_number: int, text: str) -> str:
         logger.error(f"[TRANSCRIPTION UTILS] Exception: {e}")
         raise HTTPException(502, detail=f"Summary Error: {e}")
 
-
-# --------------------------------------------------------------
-# 2. THEME EXTRACTION
-# --------------------------------------------------------------
 async def generate_theme(session_number: int, text: str) -> dict:
     if not MODEL_KEY:
         raise HTTPException(500, detail="MODEL3_API_KEY missing.")
@@ -151,10 +142,6 @@ async def generate_theme(session_number: int, text: str) -> dict:
         logger.error(f"[TRANSCRIPTION UTILS] Exception: {e}")
         raise HTTPException(502, detail=f"Theme Error: {e}")
 
-
-# --------------------------------------------------------------
-# 3. SENTIMENT ANALYSIS (Parallel)
-# --------------------------------------------------------------
 async def _fetch_single_sentiment(model_name: str, api_key: str, text: str) -> float | None:
     if not api_key: return None
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "HTTP-Referer": "http://localhost"}
@@ -402,7 +389,6 @@ async def _parse_timestamp_to_seconds(timestamp_str: str) -> float:
     except:
         return 0.0
 
-# Add this helper at the top of the file
 def _parse_timestamp_to_seconds(timestamp_str: str) -> float:
     if not timestamp_str: return 0.0
     try:
@@ -413,7 +399,6 @@ def _parse_timestamp_to_seconds(timestamp_str: str) -> float:
     except:
         return 0.0
 
-# Updated function: Preserves your logic + adds RAG fields
 async def impute_speaker_labels(cleaned_data: dict, role_map: dict) -> dict:
     """
     Replaces generic labels with roles AND adds sequence/time metadata.
