@@ -13,13 +13,35 @@ from app.utils.chat_utils import (
     fetch_client_context
 )
 from app.utils.db_utils import get_session_number
-from app.utils.embedding_utils import generate_query_embedding
+from fastapi import BackgroundTasks
+from app.utils.chat_utils import generate_chat_summary
+
+async def background_log_chat(session_id: str, query: str, router_plan_dict: dict, answer: str):
+    """Background task to generate summary and save to DB."""
+    logger.info(f"[BG TASK] Starting summary generation for session {session_id}")
+    
+    # 1. Get Summary (with fallback built-in)
+    summary = await generate_chat_summary(answer)
+    
+    # 2. Save to Database
+    try:
+        db()("chat_logs").insert({
+            "session_id": session_id,
+            "query": query,
+            "router_plan": router_plan_dict,
+            "answer": answer,
+            "summarized_answer": summary
+        }).execute()
+        logger.success(f"[BG TASK] Chat logged successfully for Session {session_id}")
+    except Exception as e:
+        logger.error(f"[BG TASK] Failed to log chat: {e}")
 
 async def chat_service(
     query: str,
     client_id: str,
     therapist_id: str,
-    session_id: str | None = None
+    background_tasks: BackgroundTasks,
+    session_id: str | None = None,
 ):
     try:
         logger.info(f"[CHAT SERVICE] Processing query for Client {client_id}")
@@ -64,30 +86,25 @@ async def chat_service(
         
         try:
             logger.info(f"Generating final answer using retrieved context.")
-            generation_result = await generate_clinical_answer(retrieved_context, query, history_str)
-            answer = generation_result["answer"]
-            summary = generation_result["summary"]
+            # Now it only returns the string directly
+            answer = await generate_clinical_answer(retrieved_context, query, history_str)
         except Exception as e:
             logger.error(f"[CHAT SERVICE] Generator Failure: {e}")
             raise HTTPException(status_code=500, detail="Failed to generate final answer.")
         
-        logger.debug(f"[CHAT SERVICE] Final Answer: {answer}")
-        logger.debug(f"[CHAT SERVICE] Summary: {summary}")
+        logger.debug(f"[CHAT SERVICE] Final Answer Generated.")
 
-        try:
-          db()("chat_logs").insert({
-              "session_id": session_id,
-              "query": query,
-              "router_plan": router_plan.dict(),
-              "answer": answer,
-              "summarized_answer": summary
-          }).execute()
-          
-          logger.success(f"Chat logged for Session {session_id}")
-        except Exception as e:
-          logger.error(f"Failed to log chat: {e}")
-          raise HTTPException(status_code=500, detail="Failed to log chat.")
+        # --- NEW BACKGROUND TASK TRIGGER ---
+        if session_id:
+            background_tasks.add_task(
+                background_log_chat,
+                session_id=session_id,
+                query=query,
+                router_plan_dict=router_plan.dict(),
+                answer=answer
+            )
 
+        # Return immediately to the user!
         return answer
 
     except HTTPException as he:

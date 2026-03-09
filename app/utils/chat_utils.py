@@ -885,40 +885,25 @@ async def generate_clinical_answer(retrieved_context: List[Dict[str, Any]], user
     except:
         logger.error("[GENERATOR] LLM API Call Failed.")
         raise HTTPException(status_code=502, detail="Upstream AI Provider failed to respond.")
-        
-    try:
-        # Define the separator we instructed the prompt to use
-        separator = "@@@SUMMARY@@@"
 
-        # CHECK 1: Did the model follow the format?
-        if separator not in raw_response:
-            logger.error(f"[GENERATOR] Formatting Error. Missing separator '{separator}' in response.")
-            logger.debug(f"[GENERATOR] Raw Invalid Response: {raw_response[:200]}...") # Log start of bad response
-            raise HTTPException(
-                status_code=502, 
-                detail="AI Synthesis Error: Response format invalid (Missing Summary Separation)."
-            )
-
-        # CHECK 2: Parse and Clean
-        parts = raw_response.split(separator)
-        
-        # Ensure we have exactly two parts (Answer and Summary)
-        # Note: We take the first part as answer and second as summary. 
-        # (Handling rare edge case where separator might appear twice usually isn't needed with strict prompting, but split(..., 1) is safer)
-        main_answer = parts[0].strip()
-        summary_text = parts[1].strip()
-
-        # CHECK 3: Ensure neither part is empty
-        if not main_answer or not summary_text:
-            logger.error("[GENERATOR] Empty content found in parsed answer or summary.")
-            raise HTTPException(status_code=502, detail="Failed to parse AI response.")
-
-        # Success Return
-        return {
-            "answer": main_answer,
-            "summary": summary_text
-        }
-
-    except Exception as e:
-        logger.error(f"[GENERATOR] Unhandled Synthesis Failure: {e}")
-        raise HTTPException(status_code=500, detail="Internal Generator Error.")
+    return raw_response
+    
+async def generate_chat_summary(answer: str) -> str:
+  """Generates a concise summary for the database logs."""
+  messages = [
+      {
+          "role": "system", 
+          "content": "You are an AI summerizer. You just have to summerize the text given to you as content with role user, nothing else. Summary must contain all the important details, all the number provided in content or other specific details. The summary should be concise but it must be complete. Dont miss any important detail. Dont add any information which is not present in the content. Always use the details provided in the content to generate summary. Dont make any assumption and never leave your mark i.e telling who you are or anything like that."
+      },
+      {"role": "user", "content": answer}
+  ]
+  try:
+      summary = await _call_llm_api(
+          messages=messages,
+          model=GENERATOR_MODEL,
+          temperature=0.0
+      )
+      return summary.strip()
+  except Exception as e:
+      logger.error(f"[SUMMARY TASK] Failed to generate summary: {e}")
+      return answer  # Fallback to the actual answer if generation fails
