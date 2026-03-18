@@ -499,7 +499,7 @@ async def _fetch_utterances(
         # MODE B: SESSION-WISE BATCH PROCESSING
         else:
             # 1. Prepare Columns
-            sel = "id,session_id,speaker,utterance,sequence_number,clinical_themes,start_seconds"
+            sel = "id,session_id,speaker,sequence_number"
             if criteria.columns_to_select:
                 extras = [c for c in criteria.columns_to_select if c not in sel and c != "session_number"]
                 if extras: sel += "," + ",".join(extras)
@@ -795,66 +795,89 @@ async def execute_retrieval_pipeline(router_plan: RouterOutput, client_id: str) 
 # GENERATOR LAYER
 # ==============================================================================
 
+
+
 async def generate_clinical_answer(retrieved_context: List[Dict[str, Any]], user_query: str, chat_history: str) -> str:
     """
     The Generator.
     Synthesizes the final professional answer for the therapist using the retrieved context.
     """
 
-    formatted_context = ""
+    # Inform the Generator about our abbreviations right at the top
+    # Inform the Generator about our abbreviations right at the top
+    formatted_context = "DATA LEGEND: s=speaker (T=Therapist, C=Client), seq=sequence_number, sess=session_number, th=clinical_themes/moods/emotions\n"
     
+    # Helper function to turn the dictionary into a dense string
+    def minify_dict_to_string(d: dict) -> str:
+        d.pop('id', None)
+        d.pop('session_id', None)
+        
+        if 'speaker' in d:
+            val = d.pop('speaker')
+            d['s'] = 'T' if val == 'Therapist' else ('C' if val == 'Client' else val)
+        if 'sequence_number' in d: d['seq'] = d.pop('sequence_number')
+        if 'session_number' in d: d['sess'] = d.pop('session_number')
+        
+        # Standardize the themes key
+        themes_data = d.pop('clinical_themes', d.pop('th', None))
+        if themes_data is not None:
+            d['th'] = themes_data
+
+        parts = []
+        for k, v in d.items():
+            if v == [] or v == {}: 
+                continue
+                
+            if isinstance(v, list):
+                clean_val = ",".join(str(i) for i in v)
+                parts.append(f"{k}={clean_val}")
+            elif isinstance(v, dict):
+                if k == 'th':
+                    # If it's the themes dictionary, extract ONLY the theme names and ignore the scores
+                    clean_val = ",".join(str(theme_name) for theme_name in v.keys())
+                    parts.append(f"{k}={clean_val}")
+                else:
+                    # Fallback for any other dictionaries just in case
+                    clean_pairs = [f"{sub_k}:{sub_v:.2f}" if isinstance(sub_v, float) else f"{sub_k}:{sub_v}" for sub_k, sub_v in v.items()]
+                    parts.append(f"{k}={','.join(clean_pairs)}")
+            else:
+                parts.append(f"{k}={v}")
+        return " ".join(parts)
+
     for idx, item in enumerate(retrieved_context, 1):
         original_text = item.get("original_text", "Unknown Query")
         is_relevant = item.get("is_relevant", False)
         reason = item.get("reason", "N/A")
         data = item.get("data", [])
 
-        # Header for this sub-query
+        # Clearly mark which sub-query this data belongs to
         formatted_context += f"\n=== SUB-QUERY {idx}: \"{original_text}\" ===\n"
         
-        # CASE A: IRRELEVANT / REFUSAL
         if not is_relevant:
-            formatted_context += f"Status: Skipped (Irrelevant)\nReason: {reason}\n"
+            formatted_context += f"Status: Skipped (Irrelevant). Reason: {reason}\n"
             continue
 
-        # CASE B: RELEVANT BUT EMPTY
         if not data:
             formatted_context += "Status: Relevant, but NO DATA found in records.\n"
             continue
 
-        # CASE C: HAS DATA (Format based on Table Type)
+        # If data exists, format and minify it.
         if isinstance(data, list):
-            formatted_context += f"Status: {len(data)} items found.\nEvidence:\n"
-            
+            formatted_context += f"Status: {len(data)} records found.\nData:\n"
             for row in data:
-                # 1. UTTERANCES (Transcript Lines)
-                if 'utterance' in row:
-                    sess = row.get('session_number', '?')
-                    seq = row.get('sequence_number', '?')
-                    speaker = row.get('speaker', 'Unknown')
-                    text = row.get('utterance', '')
-                    # Format: [Sess 1 | Seq 45] Client: "I feel sad."
-                    formatted_context += f" - [Sess {sess} | Seq {seq}] {speaker}: \"{text}\"\n"
-                
-                # 2. SESSIONS (Summaries & Metadata)
-                elif 'summary' in row:
-                    sess = row.get('session_number', '?')
-                    summary = row.get('summary', '')
-                    theme = row.get('theme', 'N/A')
-                    formatted_context += f" - [Sess {sess}] Theme: {theme} | Summary: {summary}\n"
-                
-                # 3. CLIENT INSIGHTS (Profile)
-                elif 'clinical_profile' in row:
-                    profile = row.get('clinical_profile', '')
-                    formatted_context += f" - [Client Profile] {profile}\n"
-                    
-                # 4. FALLBACK (Generic)
+                # We pass a copy so we don't mutate the original retrieved_context in memory
+                if isinstance(row, dict):
+                    minified_str = minify_dict_to_string(row.copy())
+                    formatted_context += f" - {minified_str}\n"
                 else:
-                    formatted_context += f" - {str(row)}\n"
+                    formatted_context += f" - {row}\n"
         else:
-            # Fallback for unexpected data structures (dict or string)
-            formatted_context += f"Raw Data: {str(data)}\n"
-
+            # Clean single dicts too, if applicable
+            if isinstance(data, dict):
+                minified_str = minify_dict_to_string(data.copy())
+                formatted_context += f"Data: {minified_str}\n"
+            else:
+                formatted_context += f"Data: {data}\n"
     # --- 2. MESSAGE CONSTRUCTION ---
     
     # The variable part: Query + Data
@@ -874,7 +897,8 @@ async def generate_clinical_answer(retrieved_context: List[Dict[str, Any]], user
         # The Dynamic Content
         {"role": "user", "content": final_user_message}
     ]
-
+    logger.debug(f"[GENERATOR] Final messages length: {len(final_user_message) + len(GENERATOR_SYSTEM_PROMPT)} characters")
+    logger.debug(f"[GENERATOR] Final User Message: {final_user_message}")
     # --- 3. EXECUTE LLM CALL & PARSE OUTPUT ---
     try:
         raw_response = await _call_llm_api(

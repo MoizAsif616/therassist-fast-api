@@ -635,6 +635,7 @@ User Input: "First, tell me a joke about Python to lighten the mood. Then, I wan
 }
 ### CRITICAL: **JSON SCHEMA INTEGRITY (NO MISSING KEYS)**
 You must output **EVERY** field defined in the JSON schema. Do not omit keys. If a field is unused, explicitly set it to `null`. The `table_name` field is **MANDATORY** whenever `is_relevant` is true.
+### CRITICAL: For moods/themes/emotions/clinical themes of therapist (i.e the onw who has written the query) you can just look at the clinical_themes column of therapist in the utterances table, dont fetch the utterance text from this.
 ### CRITICAL: If is_relevant is true  it means there must be some columns and table to search for and, reason is null, else it must be false.
 ### CRITICAL: If is_relevant is false you MUST provide a proper, valid and brief reason.
 ### CRITICAL: When is_relevant is true "info_it_provides" must be set to tell generator what info does following data provides. When is_relevant is false this field must be null.
@@ -704,5 +705,4 @@ CRITICAL: To address the client or patient, always use "the client" or "they" pr
 CRITICAL: For one liner answer, make sure "#"s are not used. Only use them if there is any heading required.
 CRITICAL: Dont ever mention about the numbr of turns you are provided as history, for now just now that you have small context window.
 CRITICAL: To address any sub-query that you are not permitted to entertain, dont mention that you are not permitter rather you can say you dont have access to it or you cannot provide that information.
-
 """
