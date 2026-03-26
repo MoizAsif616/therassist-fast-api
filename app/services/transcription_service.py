@@ -96,15 +96,23 @@ async def transcribe_session(session_id: str, local_file_path: str | None = None
             logger.error(f"[TRANSCRIPTION] Could not fetch session metadata.")
             raise HTTPException(500, detail="Session metadata fetch failed.")
 
-        # 4. Generate AI Insights (Parallel)
-        logger.info(f"[TRANSCRIPTION] Exracting insights.")
+        # 4. Generate AI Insights (Sequential with Sleep to avoid Rate Limits)
+        logger.info(f"[TRANSCRIPTION] Extracting insights sequentially...")
         full_text = cleaned_data["utterances"]
         
-        summary, sentiment, theme_data, client_profile_text = await asyncio.gather(
-            generate_summary(session_number, full_text),
-            generate_sentiment(session_number, full_text),
-            generate_theme(session_number, full_text),
-            generate_clinical_profile(client_id=client_id, session_number=session_number, transcript_text=full_text)
+        summary = await generate_summary(session_number, full_text)
+        await asyncio.sleep(2.0) # Mandatory gap
+        
+        sentiment = await generate_sentiment(session_id, full_text)
+        await asyncio.sleep(2.0) # Mandatory gap
+        
+        theme_data = await generate_theme(session_number, full_text)
+        await asyncio.sleep(2.0) # Mandatory gap
+        
+        client_profile_text = await generate_clinical_profile(
+            client_id=client_id, 
+            session_number=session_number, 
+            utterances=full_text
         )
 
         # 5. Atomic DB Commit

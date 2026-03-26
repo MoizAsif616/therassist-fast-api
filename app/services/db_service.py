@@ -328,25 +328,35 @@ def update_speaker_stats(session_id: str, therapist_time: float, therapist_count
     except Exception as e:
         logger.error(f"[DB] Failed to update speaker stats: {e}")
 
-def check_session_ownership(session_id: str, client_id: str, therapist_id: str) -> None:
+async def check_session_ownership(session_id: str, client_id: str, therapist_id: str) -> None:
     """
     Verifies that a session exists AND is linked to the provided client_id 
     AND is owned by the authenticated therapist_id.
+    Added ASYNC and Retry logic for stability.
     """
-    try:
-        response = db()("sessions")\
-            .select("id")\
-            .eq("id", session_id)\
-            .eq("client_id", client_id)\
-            .eq("therapist_id", therapist_id)\
-            .maybe_single()\
-            .execute()
-        
-        if not response.data:
-             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Session not found or ownership mismatch. Ensure Client, Therapist, and Session IDs are correct."
-            )
+    import asyncio
+    for attempt in range(2):
+        try:
+            response = db()("sessions")\
+                .select("id")\
+                .eq("id", session_id)\
+                .eq("client_id", client_id)\
+                .eq("therapist_id", therapist_id)\
+                .maybe_single()\
+                .execute()
 
-    except APIError:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Session ownership check failed.")
+            if not response.data:
+                 raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Session not found or ownership mismatch. Ensure Client, Therapist, and Session IDs are correct."
+                )
+            return
+
+        except Exception as e:
+            if "WinError 10054" in str(e) and attempt == 0:
+                logger.warning(f"[DB] Ownership check connection reset. Retrying...")
+                await asyncio.sleep(0.5)
+                continue
+
+            logger.error(f"[DB] Ownership check error: {e}")
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Session ownership check failed.")

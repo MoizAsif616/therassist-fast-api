@@ -41,7 +41,7 @@ def compute_emotion_maps(utterances: list[dict], existing_client_map: dict) -> t
       logger.info(f"[ANNOTATION UTILS] Computing emotion maps.")
       session_counter = Counter()
       for u in utterances:
-          if u.speaker == "Client":
+          if u.get("speaker") == "Client":
               themes = u.get("clinical_themes", {})
               if themes:
                   for theme_name in themes.keys():

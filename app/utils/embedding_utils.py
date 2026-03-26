@@ -8,7 +8,7 @@ from app.core.supabase_client import get_supabase_client
 
 # --- CONFIGURATION ---
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME")
-EMBEDDING_API_KEY = os.getenv("MODEL_API_KEY")
+EMBEDDING_API_KEY = os.getenv("EMBEDDING_MODEL_KEY")
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", 1))
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1/embeddings"
 BATCH_SIZE = 10  # Process 50 utterances per API call to save overhead

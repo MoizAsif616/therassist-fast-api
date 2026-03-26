@@ -106,7 +106,7 @@ def audio_service(file: UploadFile, client_id: str, therapist_id: str) -> str:
         return session_id
     except Exception as e:
         logger.error(f"[AUDIO SERVICE] Failed: {e}")
-        raise HTTPException(500, detail="Audio processing failed.")
+        raise HTTPException(500, detail=f"Audio processing failed. {e}")
 
     finally:
         # Cleanup local temp files

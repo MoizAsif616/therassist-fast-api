@@ -23,9 +23,9 @@ async def run_transcription(
     payload: TranscriptionRequest,
     therapist_id: str = Depends(authenticate)
 ):
-    client_exists(payload.client_id, therapist_id)
+    await client_exists(payload.client_id, therapist_id)
 
-    check_session_ownership(session_id, payload.client_id, therapist_id)
+    await check_session_ownership(session_id, payload.client_id, therapist_id)
 
     logger.info(f"[TRANSCRIPTION] Starting session {session_id} for T:{therapist_id}, C:{payload.client_id}")
 
