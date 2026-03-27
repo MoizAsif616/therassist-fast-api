@@ -52,4 +52,4 @@ async def chat_route(
         background_tasks=background_tasks
     )
 
-    return result
+    return {"answer": result}
