@@ -20,7 +20,7 @@ from app.utils.transaction_utils import commit_annotation_transaction
 
 # --- Configuration ---
 HF_TOKEN = os.getenv("HF_TOKEN")
-HF_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+HF_MODEL = "sentence-transformers/paraphrase-mpnet-base-v2"
 THEMES_PATH = os.path.join(os.getcwd(), 'app', 'utils', 'themes_embeddings.json')
 
 # --- Load Themes ---
