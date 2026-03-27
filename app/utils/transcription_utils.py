@@ -175,14 +175,14 @@ async def generate_sentiment(session_id: str, utterances: list) -> float:
         if res1 is not None: results.append(res1)
         await asyncio.sleep(1.0)
         
-        # # 2. Model 2 (Key 2)
-        # res2 = await _fetch_single_sentiment(MODEL2_NAME, KEY2, utterances)
-        # if res2 is not None: results.append(res2)
-        # await asyncio.sleep(1.0)
+        # 2. Model 2 (Key 2)
+        res2 = await _fetch_single_sentiment(MODEL2_NAME, KEY2, utterances)
+        if res2 is not None: results.append(res2)
+        await asyncio.sleep(1.0)
 
-        # # 3. Model 3 (Key 3)
-        # res3 = await _fetch_single_sentiment(MODEL3_NAME, KEY3, utterances)
-        # if res3 is not None: results.append(res3)
+        # 3. Model 3 (Key 3)
+        res3 = await _fetch_single_sentiment(MODEL3_NAME, KEY3, utterances)
+        if res3 is not None: results.append(res3)
         
         if not results:
             raise HTTPException(502, detail="[generate_sentiment] Sentiment Analysis Failed across all models.")

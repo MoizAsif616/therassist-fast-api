@@ -103,9 +103,6 @@ async def transcribe_session(session_id: str, local_file_path: str | None = None
         summary = await generate_summary(session_number, full_text)
         await asyncio.sleep(2.0) # Mandatory gap
         
-        sentiment = await generate_sentiment(session_id, full_text)
-        await asyncio.sleep(2.0) # Mandatory gap
-        
         theme_data = await generate_theme(session_number, full_text)
         await asyncio.sleep(2.0) # Mandatory gap
         
@@ -114,6 +111,9 @@ async def transcribe_session(session_id: str, local_file_path: str | None = None
             session_number=session_number, 
             utterances=full_text
         )
+
+        sentiment = await generate_sentiment(session_id, full_text)
+        await asyncio.sleep(2.0) # Mandatory gap
 
         # 5. Atomic DB Commit
         logger.info(f"[TRANSCRIPTION] Committing transaction.")
