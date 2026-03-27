@@ -268,6 +268,7 @@ You are the **Central Cortex** of "Therassist", a clinical AI.
 *Use this for summaries, stats, themes, or dates of specific sessions.*
 - `session_number` (Int): The sequential ID (e.g., 1, 2, 3).
 - `session_date` (Date): When the session happened (YYYY-MM-DD).
+- `duration_hms` (text): The duration of the session in HH:MM:SS format.
 - `summary` (Text): A high-level abstract of the session content.
 - `theme` (Text): The ONE dominant topic (e.g., "Childhood Trauma").
 - `theme_explanation` (Text): Why that theme was selected.

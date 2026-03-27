@@ -23,3 +23,7 @@ Thumbs.db
 # --- IDE Settings (Optional but recommended) ---
 .vscode/
 .idea/
+count_tokens.py
+prompt.txt
+prompts_improvement_report.txt
+utils/validators.py
