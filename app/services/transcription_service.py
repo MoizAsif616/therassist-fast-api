@@ -69,8 +69,8 @@ async def transcribe_session(session_id: str, local_file_path: str | None = None
         t_time, t_count, c_time, c_count = 0.0, 0, 0.0, 0
         
         for u in cleaned_data["utterances"]:
-            start = float(u.get("start", 0))
-            end = float(u.get("end", 0))
+            start = float(u.get("start_seconds", 0))
+            end = float(u.get("end_seconds", 0))
             dur = end - start
             
             speaker = u.get("speaker") 
@@ -84,9 +84,9 @@ async def transcribe_session(session_id: str, local_file_path: str | None = None
         
         # Explicitly ensure floats for Postgres Double Precision
         stats = {
-            "therapist_time": float(round(t_time / 1000.0, 2)), 
+            "therapist_time": float(round(t_time, 2)), 
             "therapist_count": int(t_count),
-            "client_time": float(round(c_time / 1000.0, 2)),    
+            "client_time": float(round(c_time, 2)),    
             "client_count": int(c_count)
         }
         try:

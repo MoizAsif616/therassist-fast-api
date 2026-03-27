@@ -1,7 +1,7 @@
 from loguru import logger
 from fastapi import HTTPException
 from app.core.supabase_client import db
-from datetime import datetime
+from datetime import date, datetime
 from app.core.supabase_client import get_supabase_client
 from app.utils.db_utils import _get_next_session_number
 
@@ -16,7 +16,8 @@ def create_session_transaction(
     therapist_id: str,
     duration_hms: str,
     audio_hash: str,
-    audio_url: str
+    audio_url: str,
+    session_date: str
 ) -> str:
     """
     Performs the database insertion as a single atomic unit.
@@ -27,6 +28,7 @@ def create_session_transaction(
         "client_id": client_id,
         "therapist_id": therapist_id,
         "session_number": session_number,
+        "session_date": session_date,
         "audio_url": audio_url,             # Audio is already uploaded
         "processing_state": "UPLOADED",
         "duration_hms": duration_hms,

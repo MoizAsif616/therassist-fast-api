@@ -18,6 +18,7 @@ router = APIRouter()
 class AudioUploadRequest(BaseModel):
     client_id: str
     # therapist_id: str
+    session_date: str
 
 
 class AudioUploadResponse(BaseModel):
@@ -47,7 +48,8 @@ async def upload_audio(
     session_id = audio_service(
         file=audio_file,
         client_id=metadata.client_id,
-        therapist_id=therapist_id,    
+        therapist_id=therapist_id,
+        session_date=metadata.session_date    
     )
 
     return AudioUploadResponse(

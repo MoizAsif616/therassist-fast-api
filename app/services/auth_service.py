@@ -75,6 +75,8 @@ def authenticate(authorization: str = Header(..., description="Bearer <token>"))
         print(f"[SYSTEM ERROR] {e}")
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Authentication failed.")
 
+    # return "b6ce3015-9f05-4bc2-b1fd-36e05a4d9023"
+
 
 
 

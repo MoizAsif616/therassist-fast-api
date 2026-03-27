@@ -7,6 +7,7 @@ import hashlib
 from datetime import timedelta
 from fastapi import UploadFile, HTTPException
 from loguru import logger
+from datetime import timedelta, date
 
 # Import Business Logic
 from app.services.db_service import session_with_same_audio_exists
@@ -46,7 +47,7 @@ def _md5(path):
 
 
 ## MAIN SERVICE FUNCTION
-def audio_service(file: UploadFile, client_id: str, therapist_id: str) -> str:
+def audio_service(file: UploadFile, client_id: str, therapist_id: str, session_date: str) -> str:
     ext = _validate_ext(file.filename)
 
     # 1. Save Temp File locally
@@ -55,6 +56,9 @@ def audio_service(file: UploadFile, client_id: str, therapist_id: str) -> str:
         tmp.write(file.file.read())
 
     try:
+        if date.fromisoformat(session_date) > date.today():
+          raise HTTPException(400, f"session_date '{session_date}' cannot be in the future.")
+        
         logger.info(f"[AUDIO SERVICE] Audio preprocessing started for T:{therapist_id}, C:{client_id}")
         # 2. Validation
         audio_hash = _md5(tmp_path)
@@ -92,7 +96,8 @@ def audio_service(file: UploadFile, client_id: str, therapist_id: str) -> str:
                 therapist_id=therapist_id,
                 duration_hms=str(timedelta(seconds=int(dur))),
                 audio_hash=audio_hash,
-                audio_url=uploaded_url
+                audio_url=uploaded_url,
+                session_date=session_date
             )
         except Exception as db_error:
             # --- ROLLBACK ---
