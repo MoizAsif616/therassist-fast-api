@@ -134,7 +134,7 @@ async def generate_theme(session_number: int, utterances: list) -> dict:
     ]
     try:
         logger.info(f"[TRANSCRIPTION UTILS] [SESSION THEME] Using {MODEL3_NAME} (Key 3)")
-        content = await _call_llm_api(messages, model=MODEL3_NAME, api_key=KEY3, temperature=0.1, timeout=45.0)
+        content = await _call_llm_api(messages, model=MODEL3_NAME, api_key=KEY2, temperature=0.1, timeout=45.0)
         
         theme_match = re.search(r"THEME:\s*(.+)", content)
         explanation_match = re.search(r"EXPLANATION:\s*(.+)", content)
@@ -175,12 +175,12 @@ async def generate_sentiment(session_id: str, utterances: list) -> float:
         if res1 is not None: results.append(res1)
         await asyncio.sleep(1.0)
         
-        # 2. Model 2 (Key 2)
-        res2 = await _fetch_single_sentiment(MODEL2_NAME, KEY2, utterances)
-        if res2 is not None: results.append(res2)
-        await asyncio.sleep(1.0)
+        # # 2. Model 2 (Key 2)
+        # res2 = await _fetch_single_sentiment(MODEL2_NAME, KEY2, utterances)
+        # if res2 is not None: results.append(res2)
+        # await asyncio.sleep(1.0)
 
-        # 3. Model 3 (Key 3)
+        # # 3. Model 3 (Key 3)
         # res3 = await _fetch_single_sentiment(MODEL3_NAME, KEY3, utterances)
         # if res3 is not None: results.append(res3)
         
