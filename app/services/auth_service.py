@@ -8,7 +8,7 @@ from app.core.supabase_client import db
 
 # 1. Setup & Config
 load_dotenv()
-SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
+SUPABASE_JWT_SECRET = os.getenv("JWT_SECRET")
 
 # Ensure 'supabase' client is imported here. 
 # from main import supabase  <-- UNCOMMENT THIS LINE in your actual code
