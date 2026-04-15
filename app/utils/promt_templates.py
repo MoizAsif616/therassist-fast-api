@@ -37,31 +37,33 @@ SENTIMENT_ANALYSIS_PROMPT = """
 You are an expert Clinical AI tasked with quantifying the emotional state of a therapy client.
 
 ### INPUT DATA
-The user has provided a **LABELED TRANSCRIPT** where speakers are clearly identified (e.g., "Client:", "Therapist:", "Patient:").
+1. PREVIOUS CONTEXT: The final lines of the preceding chunk. Use this ONLY to understand the flow of conversation. DO NOT base your score on this text.
+2. CURRENT CHUNK: A 10-minute segment of a labeled therapy transcript.
 
 ### YOUR GOAL
-Calculate a "Clinical Sentiment Score" (-1.0 to +1.0) strictly for the **CLIENT**.
-You must completely ignore the Therapist's sentiment score; use their words ONLY to understand the context of what the Client is reacting to.
-
-### ANALYSIS RULES
-1. **Target Speaker:** Analyze ONLY the lines labeled **"Client"** or **"Patient"**. 
-2. **Weighted Scoring (CRITICAL):** Do not simply "average" the sentiment of every sentence.
-   - **Prioritize Emotional Peaks:** A session that is 90% neutral conversation but contains a single, specific moment of deep despair or suicidal ideation must result in a negative score (e.g., -0.7), reflecting the clinical reality of the crisis.
-   - **Ignore "Social Masking":** Discount polite openers (e.g., "I'm doing fine") if they are contradicted by later details of struggle.
-3. **Contextual Awareness:** If the Therapist says "You seem happy" and the Client agrees, count it. If the Therapist says "You seem happy" and the Client stays silent or disagrees, ignore the Therapist's assessment.
+Calculate a "Clinical Sentiment Score" (-1.0 to +1.0) strictly for the CLIENT based ONLY on their utterances in the CURRENT CHUNK. 
+Use the Therapist's words and the PREVIOUS CONTEXT purely to understand what the Client is reacting to. Prioritize clinical emotional peaks (e.g., panic, breakthroughs) over neutral small talk.
 
 ### SCORING SCALE
-- **-1.0 to -0.6 (Distress/Crisis):** Severe distress, suicidal ideation, hopelessness, intense anger, or panic.
-- **-0.5 to -0.2 (Struggle):** Anxiety, sadness, frustration, confusion, or clear emotional difficulty.
-- **-0.1 to +0.1 (Neutral):** Factual recounting, calm reflection, or balanced emotions without strong polarity.
-- **+0.2 to +0.5 (Positive):** Hopeful, insightful, making progress, expressing gratitude, or relief.
-- **+0.6 to +1.0 (Thriving):** Joyful, stable, celebrating success, or expressing deep satisfaction.
+- -1.0 to -0.6: Severe distress, suicidal ideation, hopelessness, panic.
+- -0.5 to -0.2: Anxiety, sadness, frustration, struggle.
+- -0.1 to +0.1: Factual recounting, calm reflection, neutral.
+- +0.2 to +0.5: Hopeful, making progress, relief.
+- +0.6 to +1.0: Joyful, celebrating success, deep satisfaction.
 
-### OUTPUT FORMAT
-1. **Score:** The exact string "SENTIMENT_SCORE:" followed by the float value.
+### OUTPUT FORMAT (STRICT JSON)
+You must output ONLY valid JSON. Do not include markdown formatting, backticks, or conversational text.
+{{
+  "key_quote": "<insert one client sentence from the CURRENT CHUNK that best represents the score>",
+  "reasoning": "<briefly explain why you chose this score based on the client's dialogue>",
+  "score": <float between -1.0 and 1.0>
+}}
 
-### TRANSCRIPTION:
-{transcription_text}
+### PREVIOUS CONTEXT (Do Not Score):
+{previous_context_text}
+
+### CURRENT CHUNK (Score This):
+{current_chunk_text}
 """
 
 THEME_EXTRACTION_PROMPT = """
