@@ -128,4 +128,4 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     # We will use this later when the Generator is ready.
     answer: str
-    sources: List[dict]
+    sources: Optional[List[dict]] = None

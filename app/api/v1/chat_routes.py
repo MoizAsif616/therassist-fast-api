@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from loguru import logger
 from typing import List, Any
-from app.schemas.chat_schemas import ChatRequest, RouterOutput 
+from app.schemas.chat_schemas import ChatRequest, RouterOutput, ChatResponse
 
 # Services & Dependencies
 from app.services.auth_service import authenticate
@@ -11,7 +11,7 @@ from app.services.chat_service import chat_service
 
 router = APIRouter()
 
-@router.post("/sessions/{session_id}/chat", response_model=str) # Updated to return the Plan
+@router.post("/sessions/{session_id}/chat", response_model=ChatResponse) # Updated to return the Plan
 async def chat_route(
     session_id: str,
     payload: ChatRequest,
