@@ -21,7 +21,7 @@ async def background_log_chat(session_id: str, query: str, router_plan_dict: dic
     logger.info(f"[BG TASK] Starting summary generation for session {session_id}")
     
     # 1. Get Summary (with fallback built-in)
-    summary = await generate_chat_summary(answer)
+    summary = await generate_chat_summary(answer["answer"])
     
     # 2. Save to Database
     try:
@@ -29,7 +29,7 @@ async def background_log_chat(session_id: str, query: str, router_plan_dict: dic
             "session_id": session_id,
             "query": query,
             "router_plan": router_plan_dict,
-            "answer": answer,
+            "response": answer,
             "summarized_answer": summary
         }).execute()
         logger.success(f"[BG TASK] Chat logged successfully for Session {session_id}")
@@ -78,7 +78,7 @@ async def chat_service(
             raise HTTPException(status_code=502, detail="Failed to route query intent.")
         
         try:
-            retrieved_context = await execute_retrieval_pipeline(router_plan, client_id)
+            retrieved_context, raw_utterances = await execute_retrieval_pipeline(router_plan, client_id)
             logger.success(f"[CHAT SERVICE] Got Context Sequence")
         except:
             logger.error(f"[CHAT SERVICE] Retrieval Failure")
@@ -101,11 +101,11 @@ async def chat_service(
                 session_id=session_id,
                 query=query,
                 router_plan_dict=router_plan.dict(),
-                answer=answer
+                answer={"answer": answer, "utterances": raw_utterances}
             )
 
         # Return immediately to the user!
-        return answer
+        return answer, raw_utterances
 
     except HTTPException as he:
         # Pass through specific HTTP errors (like 502 Bad Gateway from Router)

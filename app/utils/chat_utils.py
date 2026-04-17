@@ -3,7 +3,7 @@ import json
 import re
 import httpx
 import asyncio
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from loguru import logger
 from fastapi import HTTPException
 from pydantic_core import ValidationError
@@ -495,11 +495,11 @@ async def _fetch_utterances(
             }
             res = supabase.rpc("match_utterances", rpc_params).execute()
             anchors = res.data
-
+            
         # MODE B: SESSION-WISE BATCH PROCESSING
         else:
             # 1. Prepare Columns
-            sel = "id,session_id,speaker,sequence_number"
+            sel = "id,session_id,speaker,sequence_number,utterance,clinical_themes,start_seconds,end_seconds,audio_chunk_url"
             if criteria.columns_to_select:
                 extras = [c for c in criteria.columns_to_select if c not in sel and c != "session_number"]
                 if extras: sel += "," + ",".join(extras)
@@ -624,7 +624,7 @@ async def _fetch_utterances(
             group_counter += 1
             continue
 
-        ctx_query = supabase.table("utterances").select("id,session_id,speaker,utterance,sequence_number,clinical_themes,start_seconds")\
+        ctx_query = supabase.table("utterances").select("id,session_id,speaker,utterance,sequence_number,clinical_themes,start_seconds,end_seconds,audio_chunk_url")\
             .eq("session_id", sess_id)\
             .gte("sequence_number", start_seq)\
             .lte("sequence_number", end_seq)
@@ -730,7 +730,7 @@ async def fetch_data_for_subquery(
         logger.error(f"[RETRIEVAL] Error dispatching to {criteria.table_name}: {e}")
         return [{"error": str(e), "source": criteria.table_name}]
 
-async def execute_retrieval_pipeline(router_plan: RouterOutput, client_id: str) -> List[Dict[str, Any]]:
+async def execute_retrieval_pipeline(router_plan: RouterOutput, client_id: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     The Main Orchestrator.
     1. Filters for Relevant Sub-Queries.
@@ -772,7 +772,8 @@ async def execute_retrieval_pipeline(router_plan: RouterOutput, client_id: str) 
             "is_relevant": sub_query.is_relevant,
             "info_it_provides": sub_query.info_it_provides,
             "reason": sub_query.reason,
-            "data": None # Default
+            "data": None,
+            "table_name": sub_query.search_criteria.table_name if sub_query.search_criteria else None,
         }
 
         if sub_query.is_relevant:
@@ -785,11 +786,32 @@ async def execute_retrieval_pipeline(router_plan: RouterOutput, client_id: str) 
                 context_item["data"] = {"error": "Failed to retrieve data."}
             else:
                 context_item["data"] = result
-        
         final_context.append(context_item)
 
+
+    raw_utterances = []
+    seen_ids = set()
+    for item in final_context:
+        if item.get("table_name") == TableName.UTTERANCES and isinstance(item.get("data"), list):
+            for row in item["data"]:
+                if isinstance(row, dict) and row.get("id") and row["id"] not in seen_ids:
+                    seen_ids.add(row["id"])
+                    raw_utterances.append({
+                        "id": row.get("id"),
+                        "clinical_themes": row.get("clinical_themes"),
+                        "audio_chunk_url": row.get("audio_chunk_url"),
+                        "utterance": row.get("utterance"),
+                        "session_id": row.get("session_id"),
+                        "session_number": row.get("session_number"),
+                        "start_seconds": row.get("start_seconds"),
+                        "end_seconds": row.get("end_seconds"),
+                        "sequence_number": row.get("sequence_number"),
+                    })
+    if raw_utterances:
+        logger.info(f"[RETRIEVAL] Total unique utterances retrieved so far: {len(raw_utterances)}") 
+
     logger.success(f"[RETRIEVAL] Pipeline completed. Context ready for Generator.")
-    return final_context
+    return final_context, raw_utterances
 
 # ==============================================================================
 # GENERATOR LAYER
