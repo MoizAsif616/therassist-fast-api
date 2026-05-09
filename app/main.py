@@ -52,6 +52,10 @@ app.include_router(annotation_router, prefix=api_version)
 app.include_router(embedding_router, prefix=api_version)
 app.include_router(chat_router, prefix=api_version)
 
+@app.get("/health", include_in_schema=False)
+async def health_check():
+    return {"status": "ok"}
+
 # Health Check / Root Endpoint
 @app.get("/", include_in_schema=False)
 async def root():
