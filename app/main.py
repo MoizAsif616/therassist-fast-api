@@ -26,7 +26,7 @@ origins = [
     "http://127.0.0.1:3002",
     "http://127.0.0.1:3003",
     "http://127.0.0.1:3004",
-    "http://127.0.0.1:3005",
+    "http://127.0.0.1:5173",
     # "*",
     # If you deploy a staging or production frontend, add its URL here later
     # "https://your-production-frontend.com", 
