@@ -44,7 +44,7 @@ async def chat_route(
 
     logger.info(f"[CHAT ROUTE] Query received from T:{therapist_id}")
 
-    result = await chat_service(
+    answer, utterances = await chat_service(
         query=payload.query,
         client_id=payload.client_id,
         therapist_id=therapist_id,
@@ -52,4 +52,4 @@ async def chat_route(
         background_tasks=background_tasks
     )
 
-    return {"answer": result}
+    return {"answer": answer, "utterances": utterances}

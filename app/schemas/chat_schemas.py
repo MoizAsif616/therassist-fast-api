@@ -126,6 +126,5 @@ class ChatRequest(BaseModel):
     client_id: str = Field(..., description="The ID of the client being discussed.")
 
 class ChatResponse(BaseModel):
-    # We will use this later when the Generator is ready.
     answer: str
-    sources: Optional[List[dict]] = None
+    utterances: Optional[List[dict]] = None
