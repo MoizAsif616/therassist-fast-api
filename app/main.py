@@ -27,6 +27,7 @@ origins = [
     "http://127.0.0.1:3003",
     "http://127.0.0.1:3004",
     "http://localhost:5173",
+    "https://therassistfe.vercel.app",
     # "*",
     # If you deploy a staging or production frontend, add its URL here later
     # "https://your-production-frontend.com", 
