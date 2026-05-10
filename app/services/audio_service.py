@@ -77,9 +77,8 @@ def audio_service(file: UploadFile, client_id: str, therapist_id: str, session_d
         _resample(tmp_path, final_path)
 
         # 4. Generate Filename & UPLOAD (Step 1 of Distributed Transaction)
-        timestamp = int(time.time())
         # Format: {therapist_id}-{timestamp}.{ext}
-        r2_object_name = f"{therapist_id}-{timestamp}.{ext}"
+        r2_object_name = f"{audio_hash}.{ext}"
 
         # Upload to R2 via Minio
         try:
